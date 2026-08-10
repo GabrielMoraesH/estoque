@@ -14,7 +14,9 @@ function createInMemoryOcRepository({
   ocProdutos = [],
   ocLocalizacoes = [],
   ocAssignments = [],
+  ocAssignmentProdutos = [],
   failOnCreateOcLocalizacao = false,
+  failOnCreateOcAssignmentProdutos = false,
   failOnUpdateItemCount = false
 } = {}) {
   const state = {
@@ -25,6 +27,7 @@ function createInMemoryOcRepository({
     ocProdutos: ocProdutos.map(clone),
     ocLocalizacoes: ocLocalizacoes.map(clone),
     ocAssignments: ocAssignments.map(clone),
+    ocAssignmentProdutos: ocAssignmentProdutos.map(clone),
     nextOcId: ocs.reduce((maxId, oc) => Math.max(maxId, Number(oc.id || 0)), 0) + 1,
     nextItemId: items.reduce((maxId, item) => Math.max(maxId, Number(item.id || 0)), 0) + 1,
     nextCountId: counts.reduce((maxId, count) => Math.max(maxId, Number(count.id || 0)), 0) + 1,
@@ -47,6 +50,7 @@ function createInMemoryOcRepository({
         currentState.ocProdutos = snapshot.ocProdutos;
         currentState.ocLocalizacoes = snapshot.ocLocalizacoes;
         currentState.ocAssignments = snapshot.ocAssignments;
+        currentState.ocAssignmentProdutos = snapshot.ocAssignmentProdutos;
         currentState.nextOcId = snapshot.nextOcId;
         currentState.nextItemId = snapshot.nextItemId;
         currentState.nextCountId = snapshot.nextCountId;
@@ -204,6 +208,28 @@ function createInMemoryOcRepository({
       },
 
       async createOcAssignment({ ocId, ciclo, fase, estoquistaId, status }) {
+        const duplicated = currentState.ocAssignments.some(
+          (assignment) => Number(assignment.oc_id) === Number(ocId) && Number(assignment.ciclo) === Number(ciclo)
+        );
+
+        if (duplicated) {
+          const err = new Error('duplicate assignment cycle');
+          err.code = '23505';
+          err.constraint = 'oc_assignments_oc_id_ciclo_unique';
+          throw err;
+        }
+
+        const duplicatedActive = status === 'ativo' && currentState.ocAssignments.some(
+          (assignment) => Number(assignment.oc_id) === Number(ocId) && assignment.status === 'ativo'
+        );
+
+        if (duplicatedActive) {
+          const err = new Error('duplicate active assignment');
+          err.code = '23505';
+          err.constraint = 'idx_oc_assignments_active_unique';
+          throw err;
+        }
+
         const assignment = {
           id: currentState.nextOcAssignmentId++,
           oc_id: Number(ocId),
@@ -214,6 +240,50 @@ function createInMemoryOcRepository({
         };
         currentState.ocAssignments.push(assignment);
         return clone(assignment);
+      },
+
+      async createOcAssignmentProdutos({ assignmentId, ocId, ocProdutoIds }) {
+        if (failOnCreateOcAssignmentProdutos) {
+          throw new Error('assignment products failed');
+        }
+
+        const rows = [];
+
+        for (const ocProdutoId of ocProdutoIds || []) {
+          const duplicated = currentState.ocAssignmentProdutos.some(
+            (item) =>
+              Number(item.assignment_id) === Number(assignmentId) &&
+              Number(item.oc_produto_id) === Number(ocProdutoId)
+          );
+
+          if (duplicated) {
+            continue;
+          }
+
+          const assignment = currentState.ocAssignments.find(
+            (item) => Number(item.id) === Number(assignmentId) && Number(item.oc_id) === Number(ocId)
+          );
+          const produto = currentState.ocProdutos.find(
+            (item) => Number(item.id) === Number(ocProdutoId) && Number(item.oc_id) === Number(ocId)
+          );
+
+          if (!assignment || !produto) {
+            const err = new Error('invalid assignment product');
+            err.code = '23503';
+            throw err;
+          }
+
+          const row = {
+            assignment_id: Number(assignmentId),
+            oc_id: Number(ocId),
+            oc_produto_id: Number(ocProdutoId),
+            created_at: new Date().toISOString()
+          };
+          currentState.ocAssignmentProdutos.push(row);
+          rows.push(row);
+        }
+
+        return clone(rows);
       },
 
       async createItem({ ocId, produto, saldoSistema, endereco, codigo, codigoBarras, validade, status }) {
@@ -257,8 +327,6 @@ function createInMemoryOcRepository({
             const assignment = currentState.ocAssignments.find(
               (item) =>
                 Number(item.oc_id) === Number(oc.id) &&
-                item.fase === 'contagem' &&
-                Number(item.ciclo) === 1 &&
                 item.status === 'ativo'
             );
             return Number(assignment?.estoquista_id || oc.estoquista_id) === Number(estoquistaId);
@@ -269,16 +337,39 @@ function createInMemoryOcRepository({
             const ocItems = currentState.items.filter((item) => Number(item.oc_id) === Number(oc.id));
             const productIds = currentState.ocProdutos
               .filter((produto) => Number(produto.oc_id) === Number(oc.id))
+              .filter((produto) => {
+                const assignment = currentState.ocAssignments.find(
+                  (item) => Number(item.oc_id) === Number(oc.id) && item.status === 'ativo'
+                );
+
+                if (!assignment) {
+                  return true;
+                }
+
+                return currentState.ocAssignmentProdutos.some(
+                  (item) =>
+                    Number(item.assignment_id) === Number(assignment.id) &&
+                    Number(item.oc_produto_id) === Number(produto.id)
+                );
+              })
               .map((produto) => Number(produto.id));
             const locations = currentState.ocLocalizacoes.filter((localizacao) =>
               productIds.includes(Number(localizacao.oc_produto_id))
+            );
+            const assignment = currentState.ocAssignments.find(
+              (item) => Number(item.oc_id) === Number(oc.id) && item.status === 'ativo'
             );
 
             if (locations.length > 0) {
               return {
                 ...clone(oc),
                 qtd: locations.length,
-                qtd_contados: locations.filter((localizacao) => localizacao.status === itemStatus.counted).length
+                qtd_contados: locations.filter((localizacao) =>
+                  currentState.counts.some((count) =>
+                    Number(count.assignment_id) === Number(assignment?.id) &&
+                    Number(count.oc_localizacao_id) === Number(localizacao.id)
+                  )
+                ).length
               };
             }
 
@@ -384,6 +475,18 @@ function createInMemoryOcRepository({
         return currentState.ocProdutos.some((produto) => Number(produto.oc_id) === Number(ocId));
       },
 
+      async findActiveAssignmentForUser({ ocId, estoquistaId }) {
+        return clone(
+          currentState.ocAssignments
+            .filter((assignment) =>
+              Number(assignment.oc_id) === Number(ocId) &&
+              Number(assignment.estoquista_id) === Number(estoquistaId) &&
+              assignment.status === 'ativo'
+            )
+            .sort((a, b) => Number(b.ciclo) - Number(a.ciclo) || Number(b.id) - Number(a.id))[0] || null
+        );
+      },
+
       async listOperationalProducts({ ocId, assignmentId }) {
         const hasAssignment = currentState.ocAssignments.some(
           (assignment) => Number(assignment.id) === Number(assignmentId) && Number(assignment.oc_id) === Number(ocId)
@@ -396,6 +499,13 @@ function createInMemoryOcRepository({
         return clone(
           currentState.ocProdutos
             .filter((produto) => Number(produto.oc_id) === Number(ocId))
+            .filter((produto) =>
+              currentState.ocAssignmentProdutos.some(
+                (item) =>
+                  Number(item.assignment_id) === Number(assignmentId) &&
+                  Number(item.oc_produto_id) === Number(produto.id)
+              )
+            )
             .map((produto) => {
               const locations = currentState.ocLocalizacoes
                 .filter((localizacao) => Number(localizacao.oc_produto_id) === Number(produto.id));
@@ -405,7 +515,12 @@ function createInMemoryOcRepository({
                 descricao: produto.descricao_snapshot,
                 status: produto.status,
                 total_localizacoes: locations.length,
-                localizacoes_contadas: locations.filter((location) => location.status === 'contado').length
+                localizacoes_contadas: locations.filter((location) =>
+                  currentState.counts.some((count) =>
+                    Number(count.assignment_id) === Number(assignmentId) &&
+                    Number(count.oc_localizacao_id) === Number(location.id)
+                  )
+                ).length
               };
             })
             .sort((a, b) => Number(a.id) - Number(b.id))
@@ -417,8 +532,13 @@ function createInMemoryOcRepository({
         const hasAssignment = currentState.ocAssignments.some(
           (assignment) => Number(assignment.id) === Number(assignmentId) && Number(assignment.oc_id) === Number(produto?.oc_id)
         );
+        const isAssigned = currentState.ocAssignmentProdutos.some(
+          (item) =>
+            Number(item.assignment_id) === Number(assignmentId) &&
+            Number(item.oc_produto_id) === Number(ocProdutoId)
+        );
 
-        if (!produto || !hasAssignment) {
+        if (!produto || !hasAssignment || !isAssigned) {
           return [];
         }
 
@@ -436,9 +556,88 @@ function createInMemoryOcRepository({
                 id: localizacao.id,
                 oc_produto_id: localizacao.oc_produto_id,
                 endereco: localizacao.endereco_snapshot,
-                status: localizacao.status,
+                status: count ? 'contado' : 'pendente',
                 quantidade: count?.quantidade ?? null,
                 lote: count?.lote ?? null
+              };
+            })
+            .sort((a, b) => Number(a.id) - Number(b.id))
+        );
+      },
+
+      async listAdminApprovalProducts({ ocId }) {
+        return clone(
+          currentState.ocProdutos
+            .filter((produto) => Number(produto.oc_id) === Number(ocId))
+            .map((produto) => {
+              const locations = currentState.ocLocalizacoes
+                .filter((localizacao) => Number(localizacao.oc_produto_id) === Number(produto.id))
+                .sort((a, b) => Number(a.id) - Number(b.id))
+                .map((localizacao) => {
+                  const history = currentState.counts
+                    .filter((count) => Number(count.oc_localizacao_id) === Number(localizacao.id))
+                    .map((count) => {
+                      const assignment = currentState.ocAssignments.find(
+                        (item) => Number(item.id) === Number(count.assignment_id)
+                      );
+                      const countUser = currentState.users.find((item) => Number(item.id) === Number(count.user_id));
+
+                      return {
+                        ...count,
+                        ciclo: assignment?.ciclo || null,
+                        fase: assignment?.fase || null,
+                        assignment_status: assignment?.status || null,
+                        usuario_nome: countUser?.nome || null,
+                        created_at: count.created_at || null
+                      };
+                    })
+                    .sort((a, b) => Number(a.ciclo) - Number(b.ciclo) || Number(a.id) - Number(b.id));
+                  const vigente = history.filter((count) => count.assignment_status === 'finalizado').sort(
+                    (a, b) => Number(b.ciclo) - Number(a.ciclo) || Number(b.id) - Number(a.id)
+                  )[0] || null;
+
+                  return {
+                    id: localizacao.id,
+                    endereco: localizacao.endereco_snapshot,
+                    saldo_contado: vigente?.quantidade ?? null,
+                    lote: vigente?.lote ?? null,
+                    contado_por: vigente?.usuario_nome || null,
+                    contado_em: vigente?.created_at || null,
+                    contagens: history
+                  };
+                });
+              const saldoContado = locations.reduce((sum, location) => sum + Number(location.saldo_contado || 0), 0);
+              const allHistory = locations.flatMap((location) => location.contagens || []);
+              const first = allHistory.find((count) => Number(count.ciclo) === 1) || null;
+              const last = [...allHistory].sort(
+                (a, b) => Number(b.ciclo) - Number(a.ciclo) || Number(b.id) - Number(a.id)
+              )[0] || null;
+
+              return {
+                id: produto.id,
+                oc_id: produto.oc_id,
+                oc_produto_id: produto.id,
+                produto: produto.descricao_snapshot,
+                descricao: produto.descricao_snapshot,
+                saldo_sistema: produto.saldo_sistema_snapshot,
+                saldo_sistema_snapshot: produto.saldo_sistema_snapshot,
+                saldo_contado: saldoContado,
+                saldo_contado_vigente: saldoContado,
+                diferenca: saldoContado - Number(produto.saldo_sistema_snapshot || 0),
+                lotes: locations.map((location) => location.lote).filter(Boolean),
+                localizacoes: locations,
+                locations,
+                status: locations.length > 0 && locations.every((location) => location.saldo_contado !== null)
+                  ? 'contado'
+                  : produto.status,
+                primeira_contagem_user_id: first?.user_id || null,
+                primeira_contagem_usuario_nome: first?.usuario_nome || null,
+                primeira_contagem_em: first?.created_at || null,
+                ultima_contagem_user_id: last?.user_id || null,
+                ultima_contagem_usuario_nome: last?.usuario_nome || null,
+                ultima_contagem_em: last?.created_at || null,
+                total_contagens: allHistory.length,
+                new_model: true
               };
             })
             .sort((a, b) => Number(a.id) - Number(b.id))
@@ -483,6 +682,58 @@ function createInMemoryOcRepository({
               Number(assignment.ciclo) === 1 &&
               assignment.status === 'ativo'
           ) || null
+        );
+      },
+
+      async findAssignmentProduto({ assignmentId, ocProdutoId }) {
+        return clone(
+          currentState.ocAssignmentProdutos.find(
+            (item) =>
+              Number(item.assignment_id) === Number(assignmentId) &&
+              Number(item.oc_produto_id) === Number(ocProdutoId)
+          ) || null
+        );
+      },
+
+      async findFirstCountAssignment({ ocId }) {
+        return clone(
+          currentState.ocAssignments.find(
+            (assignment) =>
+              Number(assignment.oc_id) === Number(ocId) &&
+              assignment.fase === 'contagem' &&
+              Number(assignment.ciclo) === 1
+          ) || null
+        );
+      },
+
+      async findActiveAssignmentByOc({ ocId }) {
+        return clone(
+          currentState.ocAssignments
+            .filter((assignment) => Number(assignment.oc_id) === Number(ocId) && assignment.status === 'ativo')
+            .sort((a, b) => Number(b.ciclo) - Number(a.ciclo) || Number(b.id) - Number(a.id))[0] || null
+        );
+      },
+
+      async findOcProdutosByIdsForUpdate({ ocId, ocProdutoIds }) {
+        const ids = (ocProdutoIds || []).map(Number);
+        return clone(
+          currentState.ocProdutos.filter(
+            (produto) => Number(produto.oc_id) === Number(ocId) && ids.includes(Number(produto.id))
+          )
+        );
+      },
+
+      async getNextAssignmentCycle({ ocId }) {
+        const maxCycle = currentState.ocAssignments
+          .filter((assignment) => Number(assignment.oc_id) === Number(ocId))
+          .reduce((max, assignment) => Math.max(max, Number(assignment.ciclo || 0)), 0);
+
+        return maxCycle + 1;
+      },
+
+      async hasActiveAssignment({ ocId }) {
+        return currentState.ocAssignments.some(
+          (assignment) => Number(assignment.oc_id) === Number(ocId) && assignment.status === 'ativo'
         );
       },
 
@@ -540,7 +791,8 @@ function createInMemoryOcRepository({
           assignment_id: Number(assignmentId),
           quantidade,
           lote,
-          user_id: Number(userId)
+          user_id: Number(userId),
+          created_at: new Date().toISOString()
         };
         currentState.counts.push(count);
         return clone(count);
@@ -575,22 +827,56 @@ function createInMemoryOcRepository({
 
       async getNewModelFinalizeValidation({ ocId, assignmentId }) {
         const ocExists = currentState.ocs.some((oc) => Number(oc.id) === Number(ocId));
-        const hasAssignment = currentState.ocAssignments.some(
-          (assignment) => Number(assignment.id) === Number(assignmentId) && Number(assignment.oc_id) === Number(ocId)
-        );
         const productIds = currentState.ocProdutos
           .filter((produto) => Number(produto.oc_id) === Number(ocId))
-          .map((produto) => Number(produto.id));
-        const locations = hasAssignment
-          ? currentState.ocLocalizacoes.filter((localizacao) =>
-              productIds.includes(Number(localizacao.oc_produto_id))
+          .filter((produto) =>
+            currentState.ocAssignmentProdutos.some(
+              (item) =>
+                Number(item.assignment_id) === Number(assignmentId) &&
+                Number(item.oc_produto_id) === Number(produto.id)
             )
-          : [];
+          )
+          .map((produto) => Number(produto.id));
+        const locations = currentState.ocLocalizacoes.filter((localizacao) =>
+          productIds.includes(Number(localizacao.oc_produto_id))
+        );
 
         return {
           oc_existe: ocExists,
           qtd_ativos: locations.length,
-          qtd_contados: locations.filter((localizacao) => localizacao.status === 'contado').length
+          qtd_contados: locations.filter((localizacao) =>
+            currentState.counts.some((count) =>
+              Number(count.assignment_id) === Number(assignmentId) &&
+              Number(count.oc_localizacao_id) === Number(localizacao.id)
+            )
+          ).length
+        };
+      },
+
+      async getNewModelApprovalValidation({ ocId }) {
+        const ocExists = currentState.ocs.some((oc) => Number(oc.id) === Number(ocId));
+        const productIds = currentState.ocProdutos
+          .filter((produto) => Number(produto.oc_id) === Number(ocId))
+          .map((produto) => Number(produto.id));
+        const locations = currentState.ocLocalizacoes.filter((localizacao) =>
+          productIds.includes(Number(localizacao.oc_produto_id))
+        );
+
+        return {
+          oc_existe: ocExists,
+          has_active_assignment: currentState.ocAssignments.some(
+            (assignment) => Number(assignment.oc_id) === Number(ocId) && assignment.status === 'ativo'
+          ),
+          qtd_ativos: locations.length,
+          qtd_contados: locations.filter((localizacao) =>
+            currentState.counts.some((count) => {
+              const assignment = currentState.ocAssignments.find(
+                (item) => Number(item.id) === Number(count.assignment_id)
+              );
+              return Number(count.oc_localizacao_id) === Number(localizacao.id) &&
+                assignment?.status === 'finalizado';
+            })
+          ).length
         };
       },
 
@@ -670,7 +956,12 @@ function listApproval({ currentState, gestorId, empresaId, openStatus, waitingAp
     .filter((oc) => Number(oc.empresa_id) === Number(empresaId))
     .map((oc) => {
       const gestor = currentState.users.find((user) => Number(user.id) === Number(oc.gestor_id));
-      const estoquista = currentState.users.find((user) => Number(user.id) === Number(oc.estoquista_id));
+      const lastAssignment = currentState.ocAssignments
+        .filter((assignment) => Number(assignment.oc_id) === Number(oc.id) && assignment.status === 'finalizado')
+        .sort((a, b) => Number(b.ciclo) - Number(a.ciclo) || Number(b.id) - Number(a.id))[0] || null;
+      const estoquista = currentState.users.find(
+        (user) => Number(user.id) === Number(lastAssignment?.estoquista_id || oc.estoquista_id)
+      );
       const ocItems = currentState.items.filter((item) => Number(item.oc_id) === Number(oc.id));
       const products = currentState.ocProdutos.filter((item) => Number(item.oc_id) === Number(oc.id));
 

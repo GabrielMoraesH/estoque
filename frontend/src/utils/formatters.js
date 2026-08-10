@@ -119,11 +119,17 @@ export function getStatusClassName(status, prefix = "status", fallback = "aberta
 }
 
 export function formatLocationBalanceSummary(location) {
-  return [
-    `Saldo contado: ${formatBalance(location?.saldoContado)}`,
-    `Saldo sistema: ${formatBalance(location?.saldoSistema)}`,
-    `Diferença: ${formatSignedNumber(location?.diferenca)}`
-  ].join(" | ");
+  const parts = [`Saldo contado: ${formatBalance(location?.saldoContado)}`];
+
+  if (location && Object.prototype.hasOwnProperty.call(location, "saldoSistema")) {
+    parts.push(`Saldo sistema: ${formatBalance(location.saldoSistema)}`);
+  }
+
+  if (location && Object.prototype.hasOwnProperty.call(location, "diferenca")) {
+    parts.push(`Diferenca: ${formatSignedNumber(location.diferenca)}`);
+  }
+
+  return parts.join(" | ");
 }
 
 export function formatUserRoleLabel(role, fallback = "Não informado") {

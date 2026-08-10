@@ -7,6 +7,16 @@ function getEstoquistaLabel(estoquista) {
   return `${estoquista?.nome || "Estoquista"}${levelLabel}`;
 }
 
+function hasEmpresaAccess(estoquista, empresaId) {
+  const empresas = Array.isArray(estoquista?.empresas) ? estoquista.empresas : [];
+
+  if (!empresaId || empresas.length === 0) {
+    return true;
+  }
+
+  return empresas.some((empresa) => Number(empresa?.id ?? empresa) === Number(empresaId));
+}
+
 function RecountAssignmentModal({
   open,
   estoquistas,
@@ -23,7 +33,11 @@ function RecountAssignmentModal({
   const messageId = useId();
   const safeEstoquistas = Array.isArray(estoquistas) ? estoquistas.filter(Boolean) : [];
   const availableEstoquistas = safeEstoquistas.filter(
-    (estoquista) => Number(estoquista?.id) !== Number(currentEstoquistaId)
+    (estoquista) =>
+      Number(estoquista?.id) !== Number(currentEstoquistaId) &&
+      estoquista?.ativo !== false &&
+      Number(estoquista?.nivel_estoquista) === 2 &&
+      hasEmpresaAccess(estoquista, oc?.empresa_id)
   );
   const isBusy = loadingEstoquistas || confirming;
 

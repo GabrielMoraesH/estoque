@@ -169,6 +169,22 @@ function createOcRepository(db = pool) {
       return result.rows[0];
     },
 
+    async createOcAssignmentProdutos({ assignmentId, ocId, ocProdutoIds }) {
+      if (!Array.isArray(ocProdutoIds) || ocProdutoIds.length === 0) {
+        return [];
+      }
+
+      const result = await db.query(
+        `INSERT INTO oc_assignment_produtos (assignment_id, oc_id, oc_produto_id)
+         SELECT $1, $2, unnest($3::int[])
+         ON CONFLICT (assignment_id, oc_produto_id) DO NOTHING
+         RETURNING *`,
+        [assignmentId, ocId, ocProdutoIds]
+      );
+
+      return result.rows;
+    },
+
     async createItem({ ocId, produto, saldoSistema, endereco, codigo, codigoBarras, validade, status }) {
       await db.query(
         `INSERT INTO oc_items (
@@ -193,7 +209,7 @@ function createOcRepository(db = pool) {
                   WHEN COUNT(DISTINCT oc_produtos.id) > 0 THEN COUNT(DISTINCT oc_produtos.id)
                   ELSE COUNT(DISTINCT oc_items.id)
                 END::int AS qtd,
-                estoquista.nome AS estoquista_nome,
+                COALESCE(last_assignment_user.nome, estoquista.nome) AS estoquista_nome,
                 empresas.codigo AS empresa_codigo,
                 empresas.nome AS empresa_nome,
                 MAX(contagens.created_at) AS ultima_contagem_em
@@ -201,11 +217,20 @@ function createOcRepository(db = pool) {
          LEFT JOIN oc_items ON oc_items.oc_id = ocs.id
          LEFT JOIN oc_produtos ON oc_produtos.oc_id = ocs.id
          LEFT JOIN contagens ON contagens.oc_id = ocs.id
+         LEFT JOIN LATERAL (
+           SELECT assignments.estoquista_id
+           FROM oc_assignments assignments
+           WHERE assignments.oc_id = ocs.id
+             AND assignments.status = 'finalizado'
+           ORDER BY assignments.ciclo DESC, assignments.id DESC
+           LIMIT 1
+         ) last_assignment ON true
+         LEFT JOIN users last_assignment_user ON last_assignment_user.id = last_assignment.estoquista_id
          LEFT JOIN users estoquista ON estoquista.id = ocs.estoquista_id
          LEFT JOIN empresas ON empresas.id = ocs.empresa_id
          WHERE ocs.gestor_id = $1
            AND ocs.empresa_id = $2
-         GROUP BY ocs.id, estoquista.nome, empresas.codigo, empresas.nome
+         GROUP BY ocs.id, estoquista.nome, last_assignment_user.nome, empresas.codigo, empresas.nome
          ORDER BY ocs.id DESC`,
         [gestorId, empresaId]
       );
@@ -221,7 +246,7 @@ function createOcRepository(db = pool) {
                   ELSE COUNT(oc_items.id) FILTER (WHERE oc_items.status <> $2)
                 END::int AS qtd,
                 CASE
-                  WHEN COUNT(DISTINCT oc_localizacoes.id) > 0 THEN COUNT(DISTINCT oc_localizacoes.id) FILTER (WHERE oc_localizacoes.status = $3)
+                  WHEN COUNT(DISTINCT oc_localizacoes.id) > 0 THEN COUNT(DISTINCT active_counts.id)
                   ELSE COUNT(oc_items.id) FILTER (WHERE oc_items.status = $3)
                 END::int AS qtd_contados,
                 empresas.codigo AS empresa_codigo,
@@ -229,11 +254,17 @@ function createOcRepository(db = pool) {
          FROM ocs
          LEFT JOIN oc_items ON oc_items.oc_id = ocs.id
          LEFT JOIN oc_assignments ON oc_assignments.oc_id = ocs.id
-          AND oc_assignments.fase = 'contagem'
-          AND oc_assignments.ciclo = 1
           AND oc_assignments.status = 'ativo'
          LEFT JOIN oc_produtos ON oc_produtos.oc_id = ocs.id
+         LEFT JOIN oc_assignment_produtos ON oc_assignment_produtos.assignment_id = oc_assignments.id
+          AND oc_assignment_produtos.oc_produto_id = oc_produtos.id
          LEFT JOIN oc_localizacoes ON oc_localizacoes.oc_produto_id = oc_produtos.id
+          AND (
+            oc_assignments.id IS NULL
+            OR oc_assignment_produtos.oc_produto_id IS NOT NULL
+          )
+         LEFT JOIN contagens active_counts ON active_counts.assignment_id = oc_assignments.id
+          AND active_counts.oc_localizacao_id = oc_localizacoes.id
          LEFT JOIN empresas ON empresas.id = ocs.empresa_id
          WHERE COALESCE(oc_assignments.estoquista_id, ocs.estoquista_id) = $1
            AND ocs.empresa_id = $4
@@ -268,12 +299,21 @@ function createOcRepository(db = pool) {
          FROM ocs
          LEFT JOIN oc_items ON oc_items.oc_id = ocs.id
          LEFT JOIN oc_produtos ON oc_produtos.oc_id = ocs.id
+         LEFT JOIN LATERAL (
+           SELECT assignments.estoquista_id
+           FROM oc_assignments assignments
+           WHERE assignments.oc_id = ocs.id
+             AND assignments.status = 'finalizado'
+           ORDER BY assignments.ciclo DESC, assignments.id DESC
+           LIMIT 1
+         ) last_assignment ON true
+         LEFT JOIN users last_assignment_user ON last_assignment_user.id = last_assignment.estoquista_id
          LEFT JOIN users gestor ON gestor.id = ocs.gestor_id
          LEFT JOIN users estoquista ON estoquista.id = ocs.estoquista_id
          LEFT JOIN empresas ON empresas.id = ocs.empresa_id
          WHERE COALESCE(ocs.status, $1) = $2
            AND ocs.empresa_id = $3
-         GROUP BY ocs.id, gestor.nome, estoquista.nome, empresas.codigo, empresas.nome
+         GROUP BY ocs.id, gestor.nome, estoquista.nome, last_assignment_user.nome, empresas.codigo, empresas.nome
          ORDER BY ocs.id DESC`,
         [openStatus, waitingApprovalStatus, empresaId]
       );
@@ -289,19 +329,28 @@ function createOcRepository(db = pool) {
                   ELSE COUNT(DISTINCT oc_items.id)
                 END::int AS qtd,
                 gestor.nome AS gestor_nome,
-                estoquista.nome AS estoquista_nome,
+                COALESCE(last_assignment_user.nome, estoquista.nome) AS estoquista_nome,
                 empresas.codigo AS empresa_codigo,
                 empresas.nome AS empresa_nome
          FROM ocs
          LEFT JOIN oc_items ON oc_items.oc_id = ocs.id
          LEFT JOIN oc_produtos ON oc_produtos.oc_id = ocs.id
+         LEFT JOIN LATERAL (
+           SELECT assignments.estoquista_id
+           FROM oc_assignments assignments
+           WHERE assignments.oc_id = ocs.id
+             AND assignments.status = 'finalizado'
+           ORDER BY assignments.ciclo DESC, assignments.id DESC
+           LIMIT 1
+         ) last_assignment ON true
+         LEFT JOIN users last_assignment_user ON last_assignment_user.id = last_assignment.estoquista_id
          LEFT JOIN users gestor ON gestor.id = ocs.gestor_id
          LEFT JOIN users estoquista ON estoquista.id = ocs.estoquista_id
          LEFT JOIN empresas ON empresas.id = ocs.empresa_id
          WHERE COALESCE(ocs.status, $1) = $2
            AND ocs.gestor_id = $3
            AND ocs.empresa_id = $4
-         GROUP BY ocs.id, gestor.nome, estoquista.nome, empresas.codigo, empresas.nome
+         GROUP BY ocs.id, gestor.nome, estoquista.nome, last_assignment_user.nome, empresas.codigo, empresas.nome
          ORDER BY ocs.id DESC`,
         [openStatus, waitingApprovalStatus, gestorId, empresaId]
       );
@@ -439,22 +488,36 @@ function createOcRepository(db = pool) {
       return Boolean(result.rows[0]?.has_new_model);
     },
 
+    async findActiveAssignmentForUser({ ocId, estoquistaId }, { forUpdate = false } = {}) {
+      const result = await db.query(
+        `SELECT *
+         FROM oc_assignments
+         WHERE oc_id = $1
+           AND estoquista_id = $2
+           AND status = 'ativo'
+         ORDER BY ciclo DESC, id DESC
+         LIMIT 1
+         ${forUpdate ? 'FOR UPDATE' : ''}`,
+        [ocId, estoquistaId]
+      );
+
+      return result.rows[0] || null;
+    },
+
     async listOperationalProducts({ ocId, assignmentId }) {
       const result = await db.query(
         `SELECT oc_produtos.id,
                 oc_produtos.descricao_snapshot AS descricao,
                 oc_produtos.status,
                 COUNT(oc_localizacoes.id)::int AS total_localizacoes,
-                COUNT(oc_localizacoes.id) FILTER (WHERE oc_localizacoes.status = 'contado')::int AS localizacoes_contadas
+                COUNT(own_counts.id)::int AS localizacoes_contadas
          FROM oc_produtos
+         INNER JOIN oc_assignment_produtos ON oc_assignment_produtos.oc_produto_id = oc_produtos.id
+          AND oc_assignment_produtos.assignment_id = $2
          INNER JOIN oc_localizacoes ON oc_localizacoes.oc_produto_id = oc_produtos.id
+         LEFT JOIN contagens own_counts ON own_counts.assignment_id = $2
+          AND own_counts.oc_localizacao_id = oc_localizacoes.id
          WHERE oc_produtos.oc_id = $1
-           AND EXISTS (
-             SELECT 1
-             FROM oc_assignments
-             WHERE oc_assignments.id = $2
-               AND oc_assignments.oc_id = oc_produtos.oc_id
-           )
          GROUP BY oc_produtos.id
          ORDER BY oc_produtos.id ASC`,
         [ocId, assignmentId]
@@ -468,13 +531,15 @@ function createOcRepository(db = pool) {
         `SELECT oc_localizacoes.id,
                 oc_localizacoes.oc_produto_id,
                 oc_localizacoes.endereco_snapshot AS endereco,
-                oc_localizacoes.status,
+                CASE WHEN own_count.id IS NULL THEN 'pendente' ELSE 'contado' END AS status,
                 own_count.quantidade,
                 own_count.lote
          FROM oc_localizacoes
          INNER JOIN oc_produtos ON oc_produtos.id = oc_localizacoes.oc_produto_id
+         INNER JOIN oc_assignment_produtos ON oc_assignment_produtos.oc_produto_id = oc_produtos.id
+          AND oc_assignment_produtos.assignment_id = $2
          LEFT JOIN LATERAL (
-           SELECT contagens.quantidade, contagens.lote
+           SELECT contagens.id, contagens.quantidade, contagens.lote
            FROM contagens
            WHERE contagens.assignment_id = $2
              AND contagens.oc_localizacao_id = oc_localizacoes.id
@@ -482,12 +547,6 @@ function createOcRepository(db = pool) {
            LIMIT 1
          ) own_count ON true
          WHERE oc_localizacoes.oc_produto_id = $1
-           AND EXISTS (
-             SELECT 1
-             FROM oc_assignments
-             WHERE oc_assignments.id = $2
-               AND oc_assignments.oc_id = oc_produtos.oc_id
-           )
          ORDER BY oc_localizacoes.id ASC`,
         [ocProdutoId, assignmentId]
       );
@@ -495,6 +554,133 @@ function createOcRepository(db = pool) {
       return result.rows;
     },
 
+    async listAdminApprovalProducts({ ocId }) {
+      const result = await db.query(
+        `WITH counts_enriched AS (
+         SELECT contagens.*,
+                assignments.ciclo,
+                assignments.fase,
+                assignments.status AS assignment_status,
+                users.nome AS usuario_nome
+           FROM contagens
+           INNER JOIN oc_assignments assignments ON assignments.id = contagens.assignment_id
+           LEFT JOIN users ON users.id = contagens.user_id
+           WHERE contagens.oc_id = $1
+         ),
+         location_rows AS (
+           SELECT localizacoes.oc_produto_id,
+                  localizacoes.id AS oc_localizacao_id,
+                  vigente.quantidade AS saldo_contado,
+                  vigente.lote,
+                  vigente.user_id AS ultima_contagem_user_id,
+                  vigente.usuario_nome AS ultima_contagem_usuario_nome,
+                  vigente.created_at AS ultima_contagem_em,
+                  first_count.user_id AS primeira_contagem_user_id,
+                  first_count.usuario_nome AS primeira_contagem_usuario_nome,
+                  first_count.created_at AS primeira_contagem_em,
+                  COALESCE(history.total_contagens, 0)::int AS total_contagens,
+                  json_build_object(
+                    'id', localizacoes.id,
+                    'endereco', localizacoes.endereco_snapshot,
+                    'saldo_contado', vigente.quantidade,
+                    'lote', vigente.lote,
+                    'contado_por', vigente.usuario_nome,
+                    'contado_em', vigente.created_at,
+                    'contagens', COALESCE(history.contagens, '[]'::json)
+                  ) AS localizacao_json
+           FROM oc_localizacoes localizacoes
+           INNER JOIN oc_produtos produtos ON produtos.id = localizacoes.oc_produto_id
+           LEFT JOIN LATERAL (
+             SELECT *
+             FROM counts_enriched
+             WHERE counts_enriched.oc_localizacao_id = localizacoes.id
+               AND counts_enriched.assignment_status = 'finalizado'
+             ORDER BY counts_enriched.ciclo DESC, counts_enriched.created_at DESC, counts_enriched.id DESC
+             LIMIT 1
+           ) vigente ON true
+           LEFT JOIN LATERAL (
+             SELECT *
+             FROM counts_enriched
+             WHERE counts_enriched.oc_localizacao_id = localizacoes.id
+               AND counts_enriched.ciclo = 1
+             ORDER BY counts_enriched.created_at ASC, counts_enriched.id ASC
+             LIMIT 1
+           ) first_count ON true
+           LEFT JOIN LATERAL (
+             SELECT COUNT(*) AS total_contagens,
+                    json_agg(
+                      json_build_object(
+                        'id', id,
+                        'assignment_id', assignment_id,
+                        'ciclo', ciclo,
+                        'fase', fase,
+                        'assignment_status', assignment_status,
+                        'user_id', user_id,
+                        'usuario_nome', usuario_nome,
+                        'quantidade', quantidade,
+                        'lote', lote,
+                        'created_at', created_at
+                      )
+                      ORDER BY ciclo ASC, created_at ASC, id ASC
+                    ) AS contagens
+             FROM counts_enriched
+             WHERE counts_enriched.oc_localizacao_id = localizacoes.id
+           ) history ON true
+           WHERE produtos.oc_id = $1
+         ),
+         location_rollup AS (
+           SELECT oc_produto_id,
+                  json_agg(localizacao_json ORDER BY oc_localizacao_id ASC) AS localizacoes,
+                  COALESCE(SUM(saldo_contado), 0) AS saldo_contado_vigente,
+                  COUNT(*)::int AS total_localizacoes,
+                  COUNT(saldo_contado)::int AS total_contadas,
+                  json_agg(DISTINCT lote) FILTER (WHERE lote IS NOT NULL) AS lotes,
+                  MIN(primeira_contagem_user_id) AS primeira_contagem_user_id,
+                  MIN(primeira_contagem_usuario_nome) AS primeira_contagem_usuario_nome,
+                  MIN(primeira_contagem_em) AS primeira_contagem_em,
+                  MAX(ultima_contagem_user_id) AS ultima_contagem_user_id,
+                  MAX(ultima_contagem_usuario_nome) AS ultima_contagem_usuario_nome,
+                  MAX(ultima_contagem_em) AS ultima_contagem_em,
+                  SUM(total_contagens)::int AS total_contagens
+           FROM location_rows
+           GROUP BY oc_produto_id
+         )
+         SELECT produtos.id,
+                produtos.oc_id,
+                produtos.id AS oc_produto_id,
+                produtos.descricao_snapshot AS produto,
+                produtos.descricao_snapshot AS descricao,
+                produtos.saldo_sistema_snapshot AS saldo_sistema,
+                produtos.saldo_sistema_snapshot,
+                COALESCE(location_rollup.saldo_contado_vigente, 0) AS saldo_contado,
+                COALESCE(location_rollup.saldo_contado_vigente, 0) AS saldo_contado_vigente,
+                COALESCE(location_rollup.saldo_contado_vigente, 0) - produtos.saldo_sistema_snapshot AS diferenca,
+                COALESCE(location_rollup.lotes, '[]'::json) AS lotes,
+                COALESCE(location_rollup.localizacoes, '[]'::json) AS localizacoes,
+                COALESCE(location_rollup.localizacoes, '[]'::json) AS locations,
+                CASE
+                  WHEN COALESCE(location_rollup.total_contadas, 0) >= COALESCE(location_rollup.total_localizacoes, 0)
+                    AND COALESCE(location_rollup.total_localizacoes, 0) > 0
+                  THEN 'contado'
+                  ELSE produtos.status
+                END AS status,
+                location_rollup.primeira_contagem_user_id,
+                location_rollup.primeira_contagem_usuario_nome,
+                location_rollup.primeira_contagem_em,
+                location_rollup.ultima_contagem_user_id,
+                location_rollup.ultima_contagem_usuario_nome,
+                location_rollup.ultima_contagem_em,
+                COALESCE(location_rollup.total_contagens, 0)::int AS total_contagens,
+                true AS new_model
+         FROM oc_produtos produtos
+         LEFT JOIN location_rollup ON location_rollup.oc_produto_id = produtos.id
+         WHERE produtos.oc_id = $1
+         ORDER BY produtos.id ASC`,
+        [ocId]
+      );
+
+      return result.rows;
+    },
     async findLocalizacaoContextById(ocLocalizacaoId, { forUpdate = false } = {}) {
       const result = await db.query(
         `SELECT oc_localizacoes.id,
@@ -535,6 +721,87 @@ function createOcRepository(db = pool) {
       );
 
       return result.rows[0] || null;
+    },
+
+    async findAssignmentProduto({ assignmentId, ocProdutoId }) {
+      const result = await db.query(
+        `SELECT *
+         FROM oc_assignment_produtos
+         WHERE assignment_id = $1
+           AND oc_produto_id = $2`,
+        [assignmentId, ocProdutoId]
+      );
+
+      return result.rows[0] || null;
+    },
+
+    async findFirstCountAssignment({ ocId }, { forUpdate = false } = {}) {
+      const result = await db.query(
+        `SELECT *
+         FROM oc_assignments
+         WHERE oc_id = $1
+           AND fase = 'contagem'
+           AND ciclo = 1
+         ORDER BY id ASC
+         LIMIT 1
+         ${forUpdate ? 'FOR UPDATE' : ''}`,
+        [ocId]
+      );
+
+      return result.rows[0] || null;
+    },
+
+    async findActiveAssignmentByOc({ ocId }, { forUpdate = false } = {}) {
+      const result = await db.query(
+        `SELECT *
+         FROM oc_assignments
+         WHERE oc_id = $1
+           AND status = 'ativo'
+         ORDER BY ciclo DESC, id DESC
+         LIMIT 1
+         ${forUpdate ? 'FOR UPDATE' : ''}`,
+        [ocId]
+      );
+
+      return result.rows[0] || null;
+    },
+
+    async findOcProdutosByIdsForUpdate({ ocId, ocProdutoIds }) {
+      const result = await db.query(
+        `SELECT *
+         FROM oc_produtos
+         WHERE oc_id = $1
+           AND id = ANY($2::int[])
+         FOR UPDATE`,
+        [ocId, ocProdutoIds]
+      );
+
+      return result.rows;
+    },
+
+    async getNextAssignmentCycle({ ocId }) {
+      const result = await db.query(
+        `SELECT COALESCE(MAX(ciclo), 0) + 1 AS next_ciclo
+         FROM oc_assignments
+         WHERE oc_id = $1`,
+        [ocId]
+      );
+
+      return Number(result.rows[0]?.next_ciclo || 1);
+    },
+
+    async hasActiveAssignment({ ocId }) {
+      const result = await db.query(
+        `SELECT EXISTS (
+           SELECT 1
+           FROM oc_assignments
+           WHERE oc_id = $1
+             AND status = 'ativo'
+         ) AS has_active_assignment`,
+        [ocId]
+      );
+
+      return Boolean(result.rows[0]?.has_active_assignment);
     },
 
     async findCountByAssignmentAndLocation({ assignmentId, ocLocalizacaoId }) {
@@ -638,17 +905,44 @@ function createOcRepository(db = pool) {
       const result = await db.query(
         `SELECT EXISTS(SELECT 1 FROM ocs WHERE id = $1) AS oc_existe,
                 COUNT(oc_localizacoes.id)::int AS qtd_ativos,
-                COUNT(oc_localizacoes.id) FILTER (WHERE oc_localizacoes.status = 'contado')::int AS qtd_contados
+                COUNT(contagens.id)::int AS qtd_contados
+         FROM oc_assignment_produtos
+         INNER JOIN oc_produtos ON oc_produtos.id = oc_assignment_produtos.oc_produto_id
+         INNER JOIN oc_localizacoes ON oc_localizacoes.oc_produto_id = oc_produtos.id
+         LEFT JOIN contagens ON contagens.assignment_id = oc_assignment_produtos.assignment_id
+          AND contagens.oc_localizacao_id = oc_localizacoes.id
+         WHERE oc_assignment_produtos.oc_id = $1
+           AND oc_assignment_produtos.assignment_id = $2`,
+        [ocId, assignmentId]
+      );
+
+      return result.rows[0];
+    },
+
+    async getNewModelApprovalValidation({ ocId }) {
+      const result = await db.query(
+        `SELECT EXISTS(SELECT 1 FROM ocs WHERE id = $1) AS oc_existe,
+                EXISTS(
+                  SELECT 1
+                  FROM oc_assignments
+                  WHERE oc_id = $1
+                    AND status = 'ativo'
+                ) AS has_active_assignment,
+                COUNT(oc_localizacoes.id)::int AS qtd_ativos,
+                COUNT(vigente.id)::int AS qtd_contados
          FROM oc_produtos
          INNER JOIN oc_localizacoes ON oc_localizacoes.oc_produto_id = oc_produtos.id
-         WHERE oc_produtos.oc_id = $1
-           AND EXISTS (
-             SELECT 1
-             FROM oc_assignments
-             WHERE oc_assignments.id = $2
-               AND oc_assignments.oc_id = oc_produtos.oc_id
-           )`,
-        [ocId, assignmentId]
+         LEFT JOIN LATERAL (
+           SELECT contagens.id
+           FROM contagens
+           INNER JOIN oc_assignments ON oc_assignments.id = contagens.assignment_id
+           WHERE contagens.oc_localizacao_id = oc_localizacoes.id
+             AND oc_assignments.status = 'finalizado'
+           ORDER BY oc_assignments.ciclo DESC, contagens.created_at DESC, contagens.id DESC
+           LIMIT 1
+         ) vigente ON true
+         WHERE oc_produtos.oc_id = $1`,
+        [ocId]
       );
 
       return result.rows[0];

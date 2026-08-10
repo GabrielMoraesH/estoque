@@ -169,6 +169,18 @@ function createOcService({ repository, audit = noopAudit } = {}) {
     return user;
   }
 
+  async function assertEstoquistaAvailableForRecount(estoquistaId, empresaId, repo = repository) {
+    const user = await assertEstoquistaAvailableForAssignment(estoquistaId, repo);
+
+    if (Number(user.nivel_estoquista) !== 2) {
+      throw badRequest('A recontagem deve ser atribuida a um estoquista nivel 2');
+    }
+
+    await assertUserHasEmpresaAccess(estoquistaId, empresaId, repo);
+
+    return user;
+  }
+
   async function assertUserHasEmpresaAccess(userId, empresaId, repo = repository) {
     const hasAccess = await repo.userHasEmpresaAccess(userId, empresaId);
 
@@ -206,6 +218,31 @@ function createOcService({ repository, audit = noopAudit } = {}) {
 
     if (Number(currentUser.nivel_estoquista) !== 1) {
       throw forbidden('A primeira contagem deve ser executada por um estoquista nivel 1');
+    }
+
+    await assertUserHasEmpresaAccess(user.id, empresaId, repo);
+
+    return currentUser;
+  }
+
+  async function assertEstoquistaEligibleForAssignment(user, empresaId, assignment, repo = repository) {
+    if (!isEstoquista(user)) {
+      throw forbidden('Voce nao tem permissao para operar esta OC');
+    }
+
+    const currentUser = await getUserOrFail(user.id, repo);
+
+    if (currentUser.role !== 'estoquista' || currentUser.ativo === false) {
+      throw forbidden('Voce nao tem permissao para operar esta OC');
+    }
+
+    const requiredLevel = assignment?.fase === 'recontagem' ? 2 : 1;
+    const message = assignment?.fase === 'recontagem'
+      ? 'A recontagem deve ser executada por um estoquista nivel 2'
+      : 'A primeira contagem deve ser executada por um estoquista nivel 1';
+
+    if (Number(currentUser.nivel_estoquista) !== requiredLevel) {
+      throw forbidden(message);
     }
 
     await assertUserHasEmpresaAccess(user.id, empresaId, repo);
@@ -254,6 +291,28 @@ function createOcService({ repository, audit = noopAudit } = {}) {
   }
 
   async function ensureOcCompleteForApproval(ocId, repo = repository) {
+    if (await repo.ocHasNewModel(ocId)) {
+      const validation = await repo.getNewModelApprovalValidation({ ocId });
+
+      if (!validation.oc_existe) {
+        throw notFound('OC nao encontrada');
+      }
+
+      if (validation.has_active_assignment) {
+        throw badRequest('OC possui recontagem ativa');
+      }
+
+      if (Number(validation.qtd_ativos || 0) === 0) {
+        throw badRequest('Nenhum produto disponivel para aprovar esta OC');
+      }
+
+      if (Number(validation.qtd_contados || 0) !== Number(validation.qtd_ativos || 0)) {
+        throw badRequest('OC possui localizacoes pendentes de contagem');
+      }
+
+      return;
+    }
+
     const validation = await repo.getFinalizeValidation({
       ocId,
       approvedStatus: ITEM_STATUS.APPROVED,
@@ -428,6 +487,10 @@ function createOcService({ repository, audit = noopAudit } = {}) {
       return conflict('Localizacao duplicada para o mesmo produto na OC');
     }
 
+    if (String(err.constraint || '').includes('oc_assignment')) {
+      return conflict('Produto duplicado no assignment da OC');
+    }
+
     return conflict('Registro duplicado na criacao da OC');
   }
 
@@ -460,6 +523,8 @@ function createOcService({ repository, audit = noopAudit } = {}) {
       });
 
       try {
+        const createdProductIds = [];
+
         for (const product of groupedProducts) {
           const createdProduct = await tx.createOcProduto({
             ocId: createdOc.id,
@@ -470,6 +535,7 @@ function createOcService({ repository, audit = noopAudit } = {}) {
             saldoSistemaSnapshot: product.saldoSistemaSnapshot,
             status: ITEM_STATUS.PENDING
           });
+          createdProductIds.push(createdProduct.id);
 
           for (const location of product.locations) {
             await tx.createOcLocalizacao({
@@ -483,12 +549,18 @@ function createOcService({ repository, audit = noopAudit } = {}) {
           }
         }
 
-        await tx.createOcAssignment({
+        const assignment = await tx.createOcAssignment({
           ocId: createdOc.id,
           ciclo: 1,
           fase: 'contagem',
           estoquistaId: estoquista_id,
           status: ASSIGNMENT_STATUS.ACTIVE
+        });
+
+        await tx.createOcAssignmentProdutos({
+          assignmentId: assignment.id,
+          ocId: createdOc.id,
+          ocProdutoIds: createdProductIds
         });
       } catch (err) {
         throw mapCreateModelError(err);
@@ -671,6 +743,68 @@ function createOcService({ repository, audit = noopAudit } = {}) {
       assertGestorOwnership(user, foundOc);
       ensureOcWaitingApproval(foundOc);
 
+      if (await tx.ocHasNewModel(ocId)) {
+        await assertEstoquistaAvailableForRecount(normalizedNovoEstoquistaId, empresaId, tx);
+
+        const firstAssignment = await tx.findFirstCountAssignment({ ocId }, { forUpdate: true });
+
+        if (!firstAssignment) {
+          throw badRequest('Assignment da primeira contagem nao encontrado');
+        }
+
+        if (Number(firstAssignment.estoquista_id) === normalizedNovoEstoquistaId) {
+          throw badRequest('Selecione um estoquista diferente do responsavel pela primeira contagem');
+        }
+
+        const activeAssignment = await tx.findActiveAssignmentByOc({ ocId }, { forUpdate: true });
+
+        if (activeAssignment) {
+          throw badRequest('OC ja possui assignment ativo');
+        }
+
+        const products = await tx.findOcProdutosByIdsForUpdate({
+          ocId,
+          ocProdutoIds: normalizedItemIds
+        });
+
+        if (products.length !== normalizedItemIds.length) {
+          throw notFound('Produto da OC nao encontrado');
+        }
+
+        const nextCycle = await tx.getNextAssignmentCycle({ ocId });
+        let assignment;
+
+        try {
+          assignment = await tx.createOcAssignment({
+            ocId,
+            ciclo: nextCycle,
+            fase: 'recontagem',
+            estoquistaId: normalizedNovoEstoquistaId,
+            status: ASSIGNMENT_STATUS.ACTIVE
+          });
+        } catch (err) {
+          if (err?.code === '23505' && String(err.constraint || '').includes('idx_oc_assignments_active_unique')) {
+            throw conflict('OC ja possui assignment ativo');
+          }
+
+          if (err?.code === '23505') {
+            throw conflict('Nao foi possivel criar o proximo ciclo de recontagem');
+          }
+
+          throw err;
+        }
+
+        await tx.createOcAssignmentProdutos({
+          assignmentId: assignment.id,
+          ocId,
+          ocProdutoIds: normalizedItemIds
+        });
+
+        await tx.updateOcStatus({ ocId, status: OC_STATUS.OPEN });
+
+        return foundOc;
+      }
+
       await assertEstoquistaAvailableForAssignment(normalizedNovoEstoquistaId, tx);
       await assertUserHasEmpresaAccess(normalizedNovoEstoquistaId, empresaId, tx);
 
@@ -736,8 +870,13 @@ function createOcService({ repository, audit = noopAudit } = {}) {
     const oc = await getOcOrFail(ocId);
     assertOcEmpresa(oc, empresaId);
 
-    if (isEstoquista(user) && await repository.ocHasNewModel(ocId)) {
-      const assignment = await repository.findActiveFirstCountAssignment({ ocId, estoquistaId: user.id });
+    if (await repository.ocHasNewModel(ocId)) {
+      if (!isEstoquista(user)) {
+        assertOcVisibleToUser(user, oc);
+        return repository.listAdminApprovalProducts({ ocId });
+      }
+
+      const assignment = await repository.findActiveAssignmentForUser({ ocId, estoquistaId: user.id });
 
       if (!assignment) {
         throw forbidden('Voce nao tem permissao para acessar esta OC');
@@ -879,7 +1018,6 @@ function createOcService({ repository, audit = noopAudit } = {}) {
     const userId = Number(user.id);
 
     const { context, assignment, count, legacyItem } = await repository.withTransaction(async (tx) => {
-      const currentUser = await assertEstoquistaEligibleForFirstCount(user, empresaId, tx);
       const localizacao = await tx.findLocalizacaoContextById(oc_localizacao_id, { forUpdate: true });
 
       if (!localizacao) {
@@ -900,13 +1038,24 @@ function createOcService({ repository, audit = noopAudit } = {}) {
       assertOcEmpresa(oc, empresaId);
       ensureOcOpen(oc);
 
-      const activeAssignment = await tx.findActiveFirstCountAssignment(
-        { ocId: localizacao.oc_id, estoquistaId: currentUser.id },
+      const activeAssignment = await tx.findActiveAssignmentForUser(
+        { ocId: localizacao.oc_id, estoquistaId: user.id },
         { forUpdate: true }
       );
 
       if (!activeAssignment) {
         throw forbidden('Voce nao tem assignment ativo para esta OC');
+      }
+
+      await assertEstoquistaEligibleForAssignment(user, empresaId, activeAssignment, tx);
+
+      const assignmentProduto = await tx.findAssignmentProduto({
+        assignmentId: activeAssignment.id,
+        ocProdutoId: localizacao.oc_produto_id
+      });
+
+      if (!assignmentProduto) {
+        throw forbidden('Localizacao nao pertence ao assignment ativo');
       }
 
       const existingCount = await tx.findCountByAssignmentAndLocation({
@@ -918,7 +1067,9 @@ function createOcService({ repository, audit = noopAudit } = {}) {
         throw conflict('Localizacao ja foi contada neste assignment');
       }
 
-      ensureLocalizacaoAvailableForFirstCount(localizacao);
+      if (activeAssignment.fase === 'contagem') {
+        ensureLocalizacaoAvailableForFirstCount(localizacao);
+      }
 
       const matchedLegacyItem = await tx.findLegacyItemForLocalizacao({
         ocId: localizacao.oc_id,
@@ -953,7 +1104,7 @@ function createOcService({ repository, audit = noopAudit } = {}) {
         countedStatus: ITEM_STATUS.COUNTED
       });
 
-      if (matchedLegacyItem) {
+      if (matchedLegacyItem && activeAssignment.fase === 'contagem') {
         await tx.updateItemCount({
           ocId: localizacao.oc_id,
           itemId: matchedLegacyItem.id,
@@ -1002,8 +1153,7 @@ function createOcService({ repository, audit = noopAudit } = {}) {
       ensureOcOpen(foundOc);
 
       if (await tx.ocHasNewModel(ocId)) {
-        await assertEstoquistaEligibleForFirstCount(user, empresaId, tx);
-        const assignment = await tx.findActiveFirstCountAssignment(
+        const assignment = await tx.findActiveAssignmentForUser(
           { ocId, estoquistaId: user.id },
           { forUpdate: true }
         );
@@ -1011,6 +1161,8 @@ function createOcService({ repository, audit = noopAudit } = {}) {
         if (!assignment) {
           throw forbidden('Voce nao tem assignment ativo para esta OC');
         }
+
+        await assertEstoquistaEligibleForAssignment(user, empresaId, assignment, tx);
 
         const currentValidation = await tx.getNewModelFinalizeValidation({
           ocId,

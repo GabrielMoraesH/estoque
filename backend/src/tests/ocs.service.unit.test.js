@@ -14,6 +14,7 @@ function createRepositoryMock(overrides = {}) {
     createOcProduto: jest.fn(),
     createOcLocalizacao: jest.fn(),
     createOcAssignment: jest.fn(),
+    createOcAssignmentProdutos: jest.fn(),
     createItem: jest.fn(),
     listByGestor: jest.fn(),
     listByEstoquista: jest.fn(),
@@ -28,16 +29,25 @@ function createRepositoryMock(overrides = {}) {
     listItems: jest.fn(),
     findItemById: jest.fn(),
     ocHasNewModel: jest.fn().mockResolvedValue(false),
+    findActiveAssignmentForUser: jest.fn(),
     listOperationalProducts: jest.fn(),
     listOperationalLocationsByProduct: jest.fn(),
+    listAdminApprovalProducts: jest.fn(),
     findLocalizacaoContextById: jest.fn().mockResolvedValue(null),
+    findAssignmentProduto: jest.fn(),
     findActiveFirstCountAssignment: jest.fn(),
+    findFirstCountAssignment: jest.fn(),
+    findActiveAssignmentByOc: jest.fn(),
+    findOcProdutosByIdsForUpdate: jest.fn(),
+    getNextAssignmentCycle: jest.fn(),
+    hasActiveAssignment: jest.fn(),
     findCountByAssignmentAndLocation: jest.fn(),
     findLegacyItemForLocalizacao: jest.fn(),
     createNewModelCount: jest.fn(),
     updateLocalizacaoStatus: jest.fn(),
     updateProdutoStatusFromLocalizacoes: jest.fn(),
     getNewModelFinalizeValidation: jest.fn(),
+    getNewModelApprovalValidation: jest.fn(),
     finalizeAssignment: jest.fn(),
     createCount: jest.fn(),
     updateItemCount: jest.fn(),
@@ -85,7 +95,7 @@ describe('OcService unitario com repository mockado', () => {
         .mockResolvedValueOnce({ id: 900 })
         .mockResolvedValueOnce({ id: 901 }),
       createOcLocalizacao: jest.fn().mockResolvedValue({}),
-      createOcAssignment: jest.fn().mockResolvedValue({}),
+      createOcAssignment: jest.fn().mockResolvedValue({ id: 950 }),
       createItem: jest.fn().mockResolvedValue({})
     });
     const { service, audit } = createService({ repository });
@@ -124,6 +134,11 @@ describe('OcService unitario com repository mockado', () => {
       fase: 'contagem',
       estoquistaId: 22,
       status: 'ativo'
+    });
+    expect(repository.createOcAssignmentProdutos).toHaveBeenCalledWith({
+      assignmentId: 950,
+      ocId: 100,
+      ocProdutoIds: [900, 901]
     });
     expect(repository.createItem).toHaveBeenCalledTimes(2);
     expect(repository.createItem).toHaveBeenNthCalledWith(1, {
@@ -1484,7 +1499,7 @@ describe('OcService unitario com repository mockado', () => {
       user: { id: 99, role: 'estoquista' },
       empresaId: 1,
       payload: basePayload
-    })).rejects.toMatchObject({ statusCode: 404 });
+    })).rejects.toMatchObject({ statusCode: 403 });
 
     const level2Repository = createInMemoryOcRepository({
       users: [
@@ -1529,7 +1544,7 @@ describe('OcService unitario com repository mockado', () => {
       user: estoquista,
       empresaId: 2,
       payload: basePayload
-    })).rejects.toMatchObject({ statusCode: 403 });
+    })).rejects.toMatchObject({ statusCode: 404 });
 
     await expect(service.saveOcCount({
       user: estoquista,
@@ -1647,6 +1662,305 @@ describe('OcService unitario com repository mockado', () => {
       statusCode: 400
     });
     expect(repository.__getState().counts).toHaveLength(2);
+  });
+
+  async function createNewModelOcForRecount() {
+    const repository = createInMemoryOcRepository({
+      users: [
+        { id: 1, nome: 'Admin', role: 'admin', ativo: true, empresas: [{ id: 1 }] },
+        { id: 11, nome: 'Gestor', role: 'gestor', ativo: true, empresas: [{ id: 1 }] },
+        { id: 22, nome: 'Contador', role: 'estoquista', nivel_estoquista: 1, ativo: true, empresas: [{ id: 1 }] },
+        { id: 33, nome: 'Recontador', role: 'estoquista', nivel_estoquista: 2, ativo: true, empresas: [{ id: 1 }] },
+        { id: 44, nome: 'Nivel 3', role: 'estoquista', nivel_estoquista: 3, ativo: true, empresas: [{ id: 1 }] },
+        { id: 55, nome: 'Inativo', role: 'estoquista', nivel_estoquista: 2, ativo: false, empresas: [{ id: 1 }] },
+        { id: 66, nome: 'Outra empresa', role: 'estoquista', nivel_estoquista: 2, ativo: true, empresas: [{ id: 2 }] }
+      ]
+    });
+    const { service } = createService({ repository });
+    const oc = await service.createOcWithItems({
+      user: gestor,
+      empresaId: 1,
+      payload: {
+        estoquista_id: 22,
+        items: [
+          { produto: 'Produto A', codigo: 'A', endereco: 'A1', saldo_sistema: 10 },
+          { produto: 'Produto B', codigo: 'B', endereco: 'B1', saldo_sistema: 40 },
+          { produto: 'Produto B', codigo: 'B', endereco: 'B2', saldo_sistema: 60 },
+          { produto: 'Produto C', codigo: 'C', endereco: 'C1', saldo_sistema: 30 },
+          { produto: 'Produto D', codigo: 'D', endereco: 'D1', saldo_sistema: 20 },
+          { produto: 'Produto D', codigo: 'D', endereco: 'D2', saldo_sistema: 20 },
+          { produto: 'Produto D', codigo: 'D', endereco: 'D3', saldo_sistema: 20 }
+        ]
+      }
+    });
+
+    for (const location of repository.__getState().ocLocalizacoes) {
+      await service.saveOcCount({
+        user: estoquista,
+        empresaId: 1,
+        payload: { oc_id: oc.id, oc_localizacao_id: location.id, quantidade: 10, lote: 'ABC' }
+      });
+    }
+
+    await service.finalizeOc({ user: estoquista, empresaId: 1, ocId: oc.id });
+    return { repository, service, oc };
+  }
+
+  it('executa recontagem parcial A/B/C/D para B/D sem vazar produtos ou saldos ao recontador', async () => {
+    const { repository, service, oc } = await createNewModelOcForRecount();
+    const stateAfterFirstCount = repository.__getState();
+    const selectedProductIds = stateAfterFirstCount.ocProdutos
+      .filter((produto) => ['Produto B', 'Produto D'].includes(produto.descricao_snapshot))
+      .map((produto) => produto.id);
+
+    await service.sendOcToRecount({
+      user: admin,
+      empresaId: 1,
+      ocId: oc.id,
+      itemIds: selectedProductIds,
+      novoEstoquistaId: 33
+    });
+
+    const state = repository.__getState();
+    const recountAssignment = state.ocAssignments.find((assignment) => assignment.fase === 'recontagem');
+    const assignmentProducts = state.ocAssignmentProdutos
+      .filter((item) => Number(item.assignment_id) === Number(recountAssignment.id))
+      .map((item) => item.oc_produto_id);
+    expect(recountAssignment).toMatchObject({ ciclo: 2, estoquista_id: 33, status: 'ativo' });
+    expect(assignmentProducts.sort()).toEqual([...selectedProductIds].sort());
+
+    const myOcs = await service.listMyEstoquistaOcs({ user: { id: 33, role: 'estoquista' }, empresaId: 1 });
+    expect(myOcs).toEqual([expect.objectContaining({ id: oc.id, qtd: 5, qtd_contados: 0 })]);
+
+    const items = await service.listOcItems({ user: { id: 33, role: 'estoquista' }, empresaId: 1, ocId: oc.id });
+    expect(items).toHaveLength(5);
+    expect(new Set(items.map((item) => item.produto))).toEqual(new Set(['Produto B', 'Produto D']));
+    expect(JSON.stringify(items)).not.toContain('saldo_sistema');
+    expect(JSON.stringify(items)).not.toContain('diferenca');
+    expect(JSON.stringify(items)).not.toContain('primeira_contagem');
+  });
+
+  it('retoma recontagem parcial e finaliza somente apos todas as localizacoes do assignment', async () => {
+    const { repository, service, oc } = await createNewModelOcForRecount();
+    const productIds = repository.__getState().ocProdutos
+      .filter((produto) => ['Produto B', 'Produto D'].includes(produto.descricao_snapshot))
+      .map((produto) => produto.id);
+    await service.sendOcToRecount({
+      user: admin,
+      empresaId: 1,
+      ocId: oc.id,
+      itemIds: productIds,
+      novoEstoquistaId: 33
+    });
+
+    const recountLocations = repository.__getState().ocLocalizacoes.filter((location) =>
+      productIds.includes(location.oc_produto_id)
+    );
+    await service.saveOcCount({
+      user: { id: 33, role: 'estoquista' },
+      empresaId: 1,
+      payload: { oc_id: oc.id, oc_localizacao_id: recountLocations[0].id, quantidade: 95, lote: 'XYZ' }
+    });
+    await service.saveOcCount({
+      user: { id: 33, role: 'estoquista' },
+      empresaId: 1,
+      payload: { oc_id: oc.id, oc_localizacao_id: recountLocations[1].id, quantidade: 96, lote: 'XYZ' }
+    });
+
+    const resumed = await service.listOcItems({ user: { id: 33, role: 'estoquista' }, empresaId: 1, ocId: oc.id });
+    expect(resumed.filter((item) => item.status === ITEM_STATUS.COUNTED)).toHaveLength(2);
+    expect(resumed.filter((item) => item.status === ITEM_STATUS.PENDING)).toHaveLength(3);
+    expect(JSON.stringify(resumed)).not.toContain('ABC');
+    await expect(service.finalizeOc({
+      user: { id: 33, role: 'estoquista' },
+      empresaId: 1,
+      ocId: oc.id
+    })).rejects.toMatchObject({ message: 'Conclua a contagem das localizacoes pendentes' });
+
+    for (const location of recountLocations.slice(2)) {
+      await service.saveOcCount({
+        user: { id: 33, role: 'estoquista' },
+        empresaId: 1,
+        payload: { oc_id: oc.id, oc_localizacao_id: location.id, quantidade: 97, lote: 'XYZ' }
+      });
+    }
+
+    await expect(service.finalizeOc({
+      user: { id: 33, role: 'estoquista' },
+      empresaId: 1,
+      ocId: oc.id
+    })).resolves.toMatchObject({
+      message: 'OC enviada para aprovacao',
+      oc: expect.objectContaining({ status: OC_STATUS.WAITING_APPROVAL })
+    });
+  });
+
+  it('preserva historico, bloqueia aprovacao com assignment ativo, aprova apos recontagem e suporta ciclo 3', async () => {
+    const { repository, service, oc } = await createNewModelOcForRecount();
+    const productB = repository.__getState().ocProdutos.find((produto) => produto.descricao_snapshot === 'Produto B');
+    await service.sendOcToRecount({
+      user: admin,
+      empresaId: 1,
+      ocId: oc.id,
+      itemIds: [productB.id],
+      novoEstoquistaId: 33
+    });
+
+    await expect(service.approveOc({ user: admin, empresaId: 1, ocId: oc.id }))
+      .rejects.toMatchObject({ message: 'OC nao esta aguardando aprovacao' });
+
+    const bLocations = repository.__getState().ocLocalizacoes
+      .filter((location) => Number(location.oc_produto_id) === Number(productB.id));
+    for (const location of bLocations) {
+      await service.saveOcCount({
+        user: { id: 33, role: 'estoquista' },
+        empresaId: 1,
+        payload: { oc_id: oc.id, oc_localizacao_id: location.id, quantidade: 95, lote: 'XYZ' }
+      });
+    }
+    await service.finalizeOc({ user: { id: 33, role: 'estoquista' }, empresaId: 1, ocId: oc.id });
+
+    const details = await service.listOcItems({ user: admin, empresaId: 1, ocId: oc.id });
+    const bDetail = details.find((item) => Number(item.id) === Number(productB.id));
+    expect(bDetail.saldo_contado_vigente).toBe(190);
+    expect(bDetail.diferenca).toBe(90);
+    expect(bDetail.localizacoes[0].contagens).toHaveLength(2);
+    expect(bDetail.localizacoes[0].contagens.map((count) => count.lote)).toEqual(['ABC', 'XYZ']);
+    expect(bDetail.localizacoes[0].contagens.map((count) => count.assignment_status))
+      .toEqual(['finalizado', 'finalizado']);
+
+    await expect(service.approveOc({ user: admin, empresaId: 1, ocId: oc.id }))
+      .resolves.toEqual({ message: 'OC aprovada com sucesso' });
+    expect(repository.__getState().ocs[0].status).toBe(OC_STATUS.FINALIZED);
+  });
+
+  it('nao usa contagem de assignment ativo como resultado administrativo vigente', async () => {
+    const { repository, service, oc } = await createNewModelOcForRecount();
+    const productB = repository.__getState().ocProdutos.find((produto) => produto.descricao_snapshot === 'Produto B');
+
+    await service.sendOcToRecount({
+      user: admin,
+      empresaId: 1,
+      ocId: oc.id,
+      itemIds: [productB.id],
+      novoEstoquistaId: 33
+    });
+
+    const firstBLocation = repository.__getState().ocLocalizacoes
+      .find((location) => Number(location.oc_produto_id) === Number(productB.id));
+    await service.saveOcCount({
+      user: { id: 33, role: 'estoquista' },
+      empresaId: 1,
+      payload: { oc_id: oc.id, oc_localizacao_id: firstBLocation.id, quantidade: 95, lote: 'XYZ' }
+    });
+
+    const details = await service.listOcItems({ user: admin, empresaId: 1, ocId: oc.id });
+    const bDetail = details.find((item) => Number(item.id) === Number(productB.id));
+
+    expect(bDetail.saldo_contado_vigente).toBe(20);
+    expect(bDetail.diferenca).toBe(-80);
+    expect(bDetail.localizacoes[0].saldo_contado).toBe(10);
+    expect(bDetail.localizacoes[0].contagens.map((count) => count.assignment_status))
+      .toEqual(['finalizado', 'ativo']);
+  });
+
+  it('impede dois assignments ativos para a mesma OC', async () => {
+    const { repository, service, oc } = await createNewModelOcForRecount();
+    const productB = repository.__getState().ocProdutos.find((produto) => produto.descricao_snapshot === 'Produto B');
+    await service.sendOcToRecount({
+      user: admin,
+      empresaId: 1,
+      ocId: oc.id,
+      itemIds: [productB.id],
+      novoEstoquistaId: 33
+    });
+
+    await expect(repository.createOcAssignment({
+      ocId: oc.id,
+      ciclo: 3,
+      fase: 'recontagem',
+      estoquistaId: 33,
+      status: 'ativo'
+    })).rejects.toMatchObject({
+      code: '23505',
+      constraint: 'idx_oc_assignments_active_unique'
+    });
+  });
+
+  it('faz rollback da solicitacao de recontagem se falhar ao associar produtos ao assignment', async () => {
+    const { repository, service, oc } = await createNewModelOcForRecount();
+    const stateBefore = repository.__getState();
+    const productB = stateBefore.ocProdutos.find((produto) => produto.descricao_snapshot === 'Produto B');
+    const failingRepository = createInMemoryOcRepository({
+      ...stateBefore,
+      failOnCreateOcAssignmentProdutos: true
+    });
+    const { service: failingService } = createService({ repository: failingRepository });
+
+    await expect(failingService.sendOcToRecount({
+      user: admin,
+      empresaId: 1,
+      ocId: oc.id,
+      itemIds: [productB.id],
+      novoEstoquistaId: 33
+    })).rejects.toThrow('assignment products failed');
+
+    const stateAfter = failingRepository.__getState();
+    expect(stateAfter.ocs.find((item) => Number(item.id) === Number(oc.id)).status)
+      .toBe(OC_STATUS.WAITING_APPROVAL);
+    expect(stateAfter.ocAssignments).toHaveLength(stateBefore.ocAssignments.length);
+    expect(stateAfter.ocAssignmentProdutos).toHaveLength(stateBefore.ocAssignmentProdutos.length);
+  });
+
+  it('cria ciclo 3 ao solicitar nova recontagem depois do ciclo 2 finalizado', async () => {
+    const { repository, service, oc } = await createNewModelOcForRecount();
+    const productB = repository.__getState().ocProdutos.find((produto) => produto.descricao_snapshot === 'Produto B');
+
+    await service.sendOcToRecount({
+      user: admin,
+      empresaId: 1,
+      ocId: oc.id,
+      itemIds: [productB.id],
+      novoEstoquistaId: 33
+    });
+
+    const bLocations = repository.__getState().ocLocalizacoes
+      .filter((location) => Number(location.oc_produto_id) === Number(productB.id));
+    for (const location of bLocations) {
+      await service.saveOcCount({
+        user: { id: 33, role: 'estoquista' },
+        empresaId: 1,
+        payload: { oc_id: oc.id, oc_localizacao_id: location.id, quantidade: 95, lote: 'XYZ' }
+      });
+    }
+    await service.finalizeOc({ user: { id: 33, role: 'estoquista' }, empresaId: 1, ocId: oc.id });
+
+    await service.sendOcToRecount({
+      user: admin,
+      empresaId: 1,
+      ocId: oc.id,
+      itemIds: [productB.id],
+      novoEstoquistaId: 33
+    });
+    expect(repository.__getState().ocAssignments.at(-1)).toMatchObject({ ciclo: 3, fase: 'recontagem' });
+  });
+
+  it.each([
+    ['nivel 1', 22, 'A recontagem deve ser atribuida a um estoquista nivel 2'],
+    ['nivel 3', 44, 'A recontagem deve ser atribuida a um estoquista nivel 2'],
+    ['inativo', 55, 'O estoquista informado esta inativo'],
+    ['sem empresa', 66, 'Usuario nao tem acesso a esta empresa']
+  ])('rejeita recontador %s no backend', async (description, estoquistaId, message) => {
+    const { repository, service, oc } = await createNewModelOcForRecount();
+    const productId = repository.__getState().ocProdutos[0].id;
+
+    await expect(service.sendOcToRecount({
+      user: admin,
+      empresaId: 1,
+      ocId: oc.id,
+      itemIds: [productId],
+      novoEstoquistaId: estoquistaId
+    })).rejects.toMatchObject({ message });
   });
 
   it('falha cedo quando repository nao implementa IOcRepository', () => {

@@ -115,6 +115,47 @@ export function getCountingTraceFromRecords(records) {
   };
 }
 
+export function getCountingTraceFromHistory(history, fallbackRecord) {
+  const records = asArray(history);
+
+  if (records.length === 0) {
+    return getCountingTrace(fallbackRecord);
+  }
+
+  const sorted = records
+    .filter(Boolean)
+    .sort((a, b) => {
+      const cycleDiff = toNumber(a?.ciclo) - toNumber(b?.ciclo);
+      if (cycleDiff !== 0) {
+        return cycleDiff;
+      }
+
+      return toTimestamp(a?.created_at) - toTimestamp(b?.created_at);
+    });
+  const first = sorted[0] || null;
+  const last = sorted[sorted.length - 1] || null;
+
+  return {
+    first: first
+      ? {
+          userId: first.user_id || null,
+          userName: first.usuario_nome || null,
+          date: first.created_at || null
+        }
+      : null,
+    last: last
+      ? {
+          userId: last.user_id || null,
+          userName: last.usuario_nome || null,
+          date: last.created_at || null
+        }
+      : null,
+    totalContagens: sorted.length,
+    hasCount: sorted.length > 0,
+    hasRecount: sorted.some((record) => toNumber(record?.ciclo) > 1 || record?.fase === "recontagem")
+  };
+}
+
 export function getTotalDifference(summary) {
   return toNumber(summary?.saldoContado) - toNumber(summary?.saldoSistema);
 }
@@ -260,6 +301,8 @@ export function groupItemsForApproval(items, produtosExterno, getLocalizacoesPor
 
     const produto = formatProductName(item);
     const externalLocations = getLocalizacoesPorProduto(produtosExterno, produto);
+    const itemId = item?.oc_produto_id || item?.id;
+    const snapshotLocations = asArray(item?.locations || item?.localizacoes);
 
     if (!acc[produto]) {
       acc[produto] = {
@@ -280,26 +323,38 @@ export function groupItemsForApproval(items, produtosExterno, getLocalizacoesPor
       externalLocations,
       group.locations.length
     );
-    const saldoSistema = toNumber(item.saldo_sistema);
-    const saldoContado = toNumber(item.saldo_contado);
+    const saldoSistema = toNumber(item.saldo_sistema_snapshot ?? item.saldo_sistema);
+    const saldoContado = toNumber(item.saldo_contado_vigente ?? item.saldo_contado);
 
     group.saldoSistemaTotal += saldoSistema;
     group.saldoContadoTotal += saldoContado;
-    group.itemIds.push(item.id);
+    group.itemIds.push(itemId);
     group.countingRecords.push(item);
     group.status =
       group.status === "contado" && item.status === "contado"
         ? "contado"
         : item.status;
-    group.locations.push({
-      itemId: item.id,
-      endereco: formatLocationName(matchedLocation?.endereco),
-      lote: formatLot(item.lote),
-      saldoContado,
-      saldoSistema,
-      diferenca: saldoContado - saldoSistema,
-      countingTrace: getCountingTrace(item)
-    });
+    if (snapshotLocations.length > 0) {
+      snapshotLocations.forEach((location) => {
+        group.locations.push({
+          itemId: location?.id || itemId,
+          endereco: formatLocationName(location?.endereco || location?.endereco_snapshot),
+          lote: formatLot(location?.lote),
+          saldoContado: toNumber(location?.saldo_contado),
+          countingTrace: getCountingTraceFromHistory(location?.contagens, item)
+        });
+      });
+    } else {
+      group.locations.push({
+        itemId,
+        endereco: formatLocationName(matchedLocation?.endereco),
+        lote: formatLot(item.lote),
+        saldoContado,
+        saldoSistema,
+        diferenca: saldoContado - saldoSistema,
+        countingTrace: getCountingTrace(item)
+      });
+    }
 
     return acc;
   }, {});
