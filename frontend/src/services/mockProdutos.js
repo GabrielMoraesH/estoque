@@ -49,7 +49,7 @@ export const produtosMock = [
   },
   {
     id: 5,
-    empresa_id: 2,
+    empresa_id: 6,
     empresa_codigo: "DIMEBRAS_SC",
     produto: "Losartana 50mg",
     saldo_sistema: 64,
@@ -61,7 +61,7 @@ export const produtosMock = [
   },
   {
     id: 6,
-    empresa_id: 2,
+    empresa_id: 6,
     empresa_codigo: "DIMEBRAS_SC",
     produto: "Omeprazol 20mg",
     saldo_sistema: 120,
@@ -73,7 +73,7 @@ export const produtosMock = [
   },
   {
     id: 7,
-    empresa_id: 2,
+    empresa_id: 6,
     empresa_codigo: "DIMEBRAS_SC",
     produto: "Omeprazol 20mg",
     saldo_sistema: 83,
@@ -121,7 +121,7 @@ export const produtosMock = [
   },
   {
     id: 11,
-    empresa_id: 4,
+    empresa_id: 5,
     empresa_codigo: "DIMEBRAS_MS",
     produto: "Metformina 850mg",
     saldo_sistema: 95,
@@ -133,7 +133,7 @@ export const produtosMock = [
   },
   {
     id: 12,
-    empresa_id: 4,
+    empresa_id: 5,
     empresa_codigo: "DIMEBRAS_MS",
     produto: "Captopril 25mg",
     saldo_sistema: 72,
@@ -145,7 +145,7 @@ export const produtosMock = [
   },
   {
     id: 13,
-    empresa_id: 4,
+    empresa_id: 5,
     empresa_codigo: "DIMEBRAS_MS",
     produto: "Captopril 25mg",
     saldo_sistema: 28,
@@ -157,7 +157,7 @@ export const produtosMock = [
   },
   {
     id: 14,
-    empresa_id: 5,
+    empresa_id: 2,
     empresa_codigo: "ALFAMED_MS",
     produto: "Azitromicina 500mg",
     saldo_sistema: 31,
@@ -169,7 +169,7 @@ export const produtosMock = [
   },
   {
     id: 15,
-    empresa_id: 5,
+    empresa_id: 2,
     empresa_codigo: "ALFAMED_MS",
     produto: "Ibuprofeno 600mg",
     saldo_sistema: 110,
@@ -181,7 +181,7 @@ export const produtosMock = [
   },
   {
     id: 16,
-    empresa_id: 2,
+    empresa_id: 6,
     empresa_codigo: "DIMEBRAS_SC",
     produto: "Dipirona 500mg",
     saldo_sistema: 44,
@@ -193,7 +193,7 @@ export const produtosMock = [
   },
   {
     id: 17,
-    empresa_id: 5,
+    empresa_id: 2,
     empresa_codigo: "ALFAMED_MS",
     produto: "Paracetamol 750mg",
     saldo_sistema: 58,
@@ -205,7 +205,7 @@ export const produtosMock = [
   },
   {
     id: 18,
-    empresa_id: 4,
+    empresa_id: 5,
     empresa_codigo: "DIMEBRAS_MS",
     produto: "Dipirona 500mg",
     saldo_sistema: 37,

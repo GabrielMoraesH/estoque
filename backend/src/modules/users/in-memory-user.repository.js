@@ -1,4 +1,5 @@
 const { assertUserRepository } = require('./IUserRepository');
+const { EMPRESAS_FIXAS } = require('../empresas/empresaConstants');
 
 function cloneUser(user) {
   return user ? { ...user } : null;
@@ -17,13 +18,7 @@ function createInMemoryUserRepository({ users = [] } = {}) {
     ativo: user.ativo !== false,
     empresas: Array.isArray(user.empresas) ? user.empresas.map((empresa) => ({ ...empresa })) : []
   }));
-  const empresas = [
-    { id: 1, codigo: 'DIMEBRAS_PR', nome: 'Dimebras PR', ativo: true },
-    { id: 2, codigo: 'DIMEBRAS_SC', nome: 'Dimebras SC', ativo: true },
-    { id: 3, codigo: 'DIMEBRAS_MT', nome: 'Dimebras MT', ativo: true },
-    { id: 4, codigo: 'DIMEBRAS_MS', nome: 'Dimebras MS', ativo: true },
-    { id: 5, codigo: 'ALFAMED_MS', nome: 'Alfamed MS', ativo: true }
-  ];
+  const empresas = EMPRESAS_FIXAS.map((empresa) => ({ ...empresa, ativo: true }));
 
   function publicUserFrom(user) {
     const { senha: _senha, ...publicUser } = user;

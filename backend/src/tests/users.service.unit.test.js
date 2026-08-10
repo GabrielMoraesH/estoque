@@ -519,13 +519,13 @@ describe('UserService unitario com repository mockado', () => {
     };
     const updatedUser = {
       ...currentUser,
-      empresas: [{ id: 2, codigo: 'DIMEBRAS_SC', nome: 'Dimebras SC' }]
+      empresas: [{ id: 6, codigo: 'DIMEBRAS_SC', nome: 'Dimebras SC' }]
     };
     const repository = createRepositoryMock({
       findSummaryById: jest.fn()
         .mockResolvedValueOnce(currentUser)
         .mockResolvedValueOnce(updatedUser),
-      findActiveEmpresaIds: jest.fn().mockResolvedValue([2]),
+      findActiveEmpresaIds: jest.fn().mockResolvedValue([6]),
       update: jest.fn().mockResolvedValue({ ...currentUser, empresas: [] }),
       replaceUserEmpresas: jest.fn().mockResolvedValue(undefined)
     });
@@ -536,14 +536,14 @@ describe('UserService unitario com repository mockado', () => {
       nome: 'Bia',
       login: 'bia',
       role: 'gestor',
-      empresa_ids: [2]
+      empresa_ids: [6]
     })).resolves.toEqual(updatedUser);
 
-    expect(repository.findActiveEmpresaIds).toHaveBeenCalledWith([2]);
-    expect(repository.replaceUserEmpresas).toHaveBeenCalledWith(7, [2]);
+    expect(repository.findActiveEmpresaIds).toHaveBeenCalledWith([6]);
+    expect(repository.replaceUserEmpresas).toHaveBeenCalledWith(7, [6]);
     expect(audit.logAction).toHaveBeenCalledWith(expect.objectContaining({
       metadata: expect.objectContaining({
-        empresa_ids: [2]
+        empresa_ids: [6]
       })
     }));
   });

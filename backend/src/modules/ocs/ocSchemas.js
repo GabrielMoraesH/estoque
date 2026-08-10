@@ -1,8 +1,10 @@
 const { z, emptyObjectSchema, idParamSchema } = require('../shared/commonSchemas');
 
 const ocItemInputSchema = z.object({
+  produto_externo_id: z.string().optional(),
   produto: z.string().trim().min(1),
   saldo_sistema: z.coerce.number(),
+  localizacao_externa_id: z.string().optional(),
   endereco: z.string().optional(),
   codigo: z.string().optional(),
   codigo_barras: z.string().optional(),
@@ -22,7 +24,7 @@ const recountBodySchema = z.object({
 const saveCountBodySchema = z.object({
   oc_id: z.coerce.number().int().positive(),
   item_id: z.coerce.number().int().positive(),
-  quantidade: z.coerce.number(),
+  quantidade: z.coerce.number().int().min(0),
   lote: z.string().trim().min(1)
 });
 

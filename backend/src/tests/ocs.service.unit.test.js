@@ -1,4 +1,5 @@
 const { createOcService } = require('../modules/ocs/oc.service');
+const { createInMemoryOcRepository } = require('../modules/ocs/in-memory-oc.repository');
 const { OC_STATUS, ITEM_STATUS } = require('../modules/ocs/ocStatus');
 const ERROR_CODES = require('../utils/errorCodes');
 
@@ -10,6 +11,9 @@ function createRepositoryMock(overrides = {}) {
     findUserById: jest.fn(),
     userHasEmpresaAccess: jest.fn().mockResolvedValue(true),
     createOc: jest.fn(),
+    createOcProduto: jest.fn(),
+    createOcLocalizacao: jest.fn(),
+    createOcAssignment: jest.fn(),
     createItem: jest.fn(),
     listByGestor: jest.fn(),
     listByEstoquista: jest.fn(),
@@ -50,7 +54,12 @@ describe('OcService unitario com repository mockado', () => {
 
   it('cria OC com itens dentro de transacao e registra auditoria', async () => {
     const repository = createRepositoryMock({
-      findUserById: jest.fn().mockResolvedValue({ id: 22, role: 'estoquista' }),
+      findUserById: jest.fn().mockResolvedValue({
+        id: 22,
+        role: 'estoquista',
+        ativo: true,
+        nivel_estoquista: 1
+      }),
       getNextIdentity: jest.fn().mockResolvedValue({ nextId: 100, codigo: 'OC-000100' }),
       createOc: jest.fn().mockResolvedValue({
         id: 100,
@@ -60,6 +69,11 @@ describe('OcService unitario com repository mockado', () => {
         empresa_id: 1,
         status: OC_STATUS.OPEN
       }),
+      createOcProduto: jest.fn()
+        .mockResolvedValueOnce({ id: 900 })
+        .mockResolvedValueOnce({ id: 901 }),
+      createOcLocalizacao: jest.fn().mockResolvedValue({}),
+      createOcAssignment: jest.fn().mockResolvedValue({}),
       createItem: jest.fn().mockResolvedValue({})
     });
     const { service, audit } = createService({ repository });
@@ -70,8 +84,8 @@ describe('OcService unitario com repository mockado', () => {
       payload: {
         estoquista_id: 22,
         items: [
-          { produto: 'Seringa', saldo_sistema: 12 },
-          { produto: 'Luva', saldo_sistema: 30 }
+          { produto: 'Seringa', codigo: 'SER', endereco: 'A1', saldo_sistema: 12 },
+          { produto: 'Luva', codigo: 'LUV', endereco: 'B1', saldo_sistema: 30 }
         ]
       },
       auditContext: { requestId: 'req-oc' }
@@ -90,7 +104,26 @@ describe('OcService unitario com repository mockado', () => {
       empresaId: 1,
       status: OC_STATUS.OPEN
     });
+    expect(repository.createOcProduto).toHaveBeenCalledTimes(2);
+    expect(repository.createOcLocalizacao).toHaveBeenCalledTimes(2);
+    expect(repository.createOcAssignment).toHaveBeenCalledWith({
+      ocId: 100,
+      ciclo: 1,
+      fase: 'contagem',
+      estoquistaId: 22,
+      status: 'ativo'
+    });
     expect(repository.createItem).toHaveBeenCalledTimes(2);
+    expect(repository.createItem).toHaveBeenNthCalledWith(1, {
+      ocId: 100,
+      produto: 'Seringa',
+      saldoSistema: 12,
+      endereco: 'A1',
+      codigo: 'SER',
+      codigoBarras: null,
+      validade: null,
+      status: ITEM_STATUS.PENDING
+    });
     expect(audit.logAction).toHaveBeenCalledWith(expect.objectContaining({
       action: 'oc.created',
       entityType: 'oc',
@@ -129,7 +162,7 @@ describe('OcService unitario com repository mockado', () => {
       empresaId: 1,
       payload: {
         estoquista_id: 22,
-        items: [{ produto: 'Seringa', saldo_sistema: 12 }]
+        items: [{ produto: 'Seringa', codigo: 'SER', endereco: 'A1', saldo_sistema: 12 }]
       }
     })).rejects.toMatchObject({
       message: 'O usuario informado nao e um estoquista',
@@ -151,7 +184,7 @@ describe('OcService unitario com repository mockado', () => {
       empresaId: 1,
       payload: {
         estoquista_id: 22,
-        items: [{ produto: 'Seringa', saldo_sistema: 12 }]
+        items: [{ produto: 'Seringa', codigo: 'SER', endereco: 'A1', saldo_sistema: 12 }]
       }
     })).rejects.toBe(transactionError);
     expect(audit.logAction).not.toHaveBeenCalled();
@@ -408,6 +441,11 @@ describe('OcService unitario com repository mockado', () => {
         empresa_id: 1,
         status: OC_STATUS.WAITING_APPROVAL
       }),
+      getFinalizeValidation: jest.fn().mockResolvedValue({
+        oc_existe: true,
+        qtd_ativos: 2,
+        qtd_contados: 2
+      }),
       approveItems: jest.fn().mockResolvedValue({}),
       updateOcStatus: jest.fn().mockResolvedValue({})
     });
@@ -454,6 +492,721 @@ describe('OcService unitario com repository mockado', () => {
       errorCode: ERROR_CODES.VALIDATION_ERROR
     });
     expect(repository.approveItems).not.toHaveBeenCalled();
+  });
+
+  it('lista itens da propria OC para estoquista sem saldo esperado ou diferenca', async () => {
+    const repository = createRepositoryMock({
+      findOcById: jest.fn().mockResolvedValue({
+        id: 55,
+        gestor_id: 11,
+        estoquista_id: 22,
+        empresa_id: 1,
+        status: OC_STATUS.OPEN
+      }),
+      listItems: jest.fn().mockResolvedValue([
+        {
+          id: 9,
+          oc_id: 55,
+          produto: 'Dipirona',
+          endereco: 'A1-01-01',
+          codigo: 'DIP',
+          codigo_barras: '789',
+          saldo_sistema: 25,
+          saldo_contado: 10,
+          diferenca: -15,
+          lote: 'L1',
+          status: ITEM_STATUS.COUNTED,
+          primeira_contagem_user_id: 22,
+          primeira_contagem_usuario_nome: 'Estoquista',
+          primeira_contagem_em: '2026-08-10T12:00:00Z',
+          ultima_contagem_user_id: 22,
+          ultima_contagem_usuario_nome: 'Estoquista',
+          ultima_contagem_em: '2026-08-10T12:00:00Z',
+          total_contagens: 1
+        }
+      ])
+    });
+    const { service } = createService({ repository });
+
+    const result = await service.listOcItems({
+      user: estoquista,
+      empresaId: 1,
+      ocId: 55
+    });
+
+    expect(result).toEqual([
+      expect.objectContaining({
+        id: 9,
+        produto: 'Dipirona',
+        endereco: 'A1-01-01',
+        saldo_contado: 10,
+        lote: 'L1'
+      })
+    ]);
+    expect(result[0]).not.toHaveProperty('saldo_sistema');
+    expect(result[0]).not.toHaveProperty('diferenca');
+    expect(result[0]).not.toHaveProperty('primeira_contagem_user_id');
+    expect(result[0]).not.toHaveProperty('ultima_contagem_user_id');
+    expect(Object.keys(result[0]).filter((key) => key.includes('saldo'))).toEqual(['saldo_contado']);
+  });
+
+  it('preserva dados administrativos dos itens para gestor dono', async () => {
+    const items = [
+      {
+        id: 9,
+        oc_id: 55,
+        produto: 'Dipirona',
+        saldo_sistema: 25,
+        saldo_contado: 10,
+        diferenca: -15,
+        primeira_contagem_user_id: 22,
+        total_contagens: 1
+      }
+    ];
+    const repository = createRepositoryMock({
+      findOcById: jest.fn().mockResolvedValue({
+        id: 55,
+        gestor_id: 11,
+        estoquista_id: 22,
+        empresa_id: 1,
+        status: OC_STATUS.WAITING_APPROVAL
+      }),
+      listItems: jest.fn().mockResolvedValue(items)
+    });
+    const { service } = createService({ repository });
+
+    await expect(service.listOcItems({
+      user: gestor,
+      empresaId: 1,
+      ocId: 55
+    })).resolves.toEqual(items);
+  });
+
+  it('bloqueia estoquista ao acessar itens da OC de outro estoquista', async () => {
+    const repository = createRepositoryMock({
+      findOcById: jest.fn().mockResolvedValue({
+        id: 55,
+        gestor_id: 11,
+        estoquista_id: 99,
+        empresa_id: 1,
+        status: OC_STATUS.OPEN
+      })
+    });
+    const { service } = createService({ repository });
+
+    await expect(service.listOcItems({
+      user: estoquista,
+      empresaId: 1,
+      ocId: 55
+    })).rejects.toMatchObject({
+      statusCode: 403,
+      errorCode: ERROR_CODES.AUTHORIZATION_ERROR
+    });
+    expect(repository.listItems).not.toHaveBeenCalled();
+  });
+
+  it('bloqueia estoquista ao finalizar OC de outro estoquista', async () => {
+    const repository = createRepositoryMock({
+      findOcById: jest.fn().mockResolvedValue({
+        id: 55,
+        gestor_id: 11,
+        estoquista_id: 99,
+        empresa_id: 1,
+        status: OC_STATUS.OPEN
+      })
+    });
+    const { service } = createService({ repository });
+
+    await expect(service.finalizeOc({
+      user: estoquista,
+      empresaId: 1,
+      ocId: 55
+    })).rejects.toMatchObject({
+      statusCode: 403,
+      errorCode: ERROR_CODES.AUTHORIZATION_ERROR
+    });
+    expect(repository.updateOcStatus).not.toHaveBeenCalled();
+  });
+
+  it('bloqueia leitura quando x-empresa-id nao corresponde a empresa da OC', async () => {
+    const repository = createRepositoryMock({
+      findOcById: jest.fn().mockResolvedValue({
+        id: 55,
+        gestor_id: 11,
+        estoquista_id: 22,
+        empresa_id: 2,
+        status: OC_STATUS.OPEN
+      })
+    });
+    const { service } = createService({ repository });
+
+    await expect(service.listOcItems({
+      user: estoquista,
+      empresaId: 1,
+      ocId: 55
+    })).rejects.toMatchObject({
+      statusCode: 404,
+      errorCode: ERROR_CODES.NOT_FOUND
+    });
+    expect(repository.listItems).not.toHaveBeenCalled();
+  });
+
+  it('bloqueia contagem quando OC pertence a outra empresa', async () => {
+    const repository = createRepositoryMock({
+      findOcById: jest.fn().mockResolvedValue({
+        id: 55,
+        gestor_id: 11,
+        estoquista_id: 22,
+        empresa_id: 2,
+        status: OC_STATUS.OPEN
+      })
+    });
+    const { service } = createService({ repository });
+
+    await expect(service.saveOcCount({
+      user: estoquista,
+      empresaId: 1,
+      payload: {
+        oc_id: 55,
+        item_id: 9,
+        quantidade: 8,
+        lote: 'L1'
+      }
+    })).rejects.toMatchObject({
+      statusCode: 404,
+      errorCode: ERROR_CODES.NOT_FOUND
+    });
+    expect(repository.createCount).not.toHaveBeenCalled();
+  });
+
+  it('bloqueia finalizacao quando OC pertence a outra empresa', async () => {
+    const repository = createRepositoryMock({
+      findOcById: jest.fn().mockResolvedValue({
+        id: 55,
+        gestor_id: 11,
+        estoquista_id: 22,
+        empresa_id: 2,
+        status: OC_STATUS.OPEN
+      })
+    });
+    const { service } = createService({ repository });
+
+    await expect(service.finalizeOc({
+      user: estoquista,
+      empresaId: 1,
+      ocId: 55
+    })).rejects.toMatchObject({
+      statusCode: 404,
+      errorCode: ERROR_CODES.NOT_FOUND
+    });
+    expect(repository.updateOcStatus).not.toHaveBeenCalled();
+  });
+
+  it('bloqueia aprovacao administrativa quando OC pertence a outra empresa', async () => {
+    const repository = createRepositoryMock({
+      findOcById: jest.fn().mockResolvedValue({
+        id: 55,
+        gestor_id: 11,
+        estoquista_id: 22,
+        empresa_id: 2,
+        status: OC_STATUS.WAITING_APPROVAL
+      })
+    });
+    const { service } = createService({ repository });
+
+    await expect(service.approveOc({
+      user: gestor,
+      empresaId: 1,
+      ocId: 55
+    })).rejects.toMatchObject({
+      statusCode: 404,
+      errorCode: ERROR_CODES.NOT_FOUND
+    });
+    expect(repository.approveItems).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['zero', 0],
+    ['inteiro positivo', 25]
+  ])('aceita quantidade %s', async (description, quantidade) => {
+    const repository = createRepositoryMock({
+      findOcById: jest.fn().mockResolvedValue({
+        id: 55,
+        gestor_id: 11,
+        estoquista_id: 22,
+        empresa_id: 1,
+        status: OC_STATUS.OPEN
+      }),
+      findItemById: jest.fn().mockResolvedValue({
+        id: 9,
+        oc_id: 55,
+        status: ITEM_STATUS.PENDING
+      }),
+      createCount: jest.fn().mockResolvedValue({
+        id: 300,
+        oc_id: 55,
+        item_id: 9,
+        quantidade,
+        lote: 'L1',
+        user_id: 22
+      }),
+      updateItemCount: jest.fn().mockResolvedValue({})
+    });
+    const { service } = createService({ repository });
+
+    await expect(service.saveOcCount({
+      user: estoquista,
+      empresaId: 1,
+      payload: {
+        oc_id: 55,
+        item_id: 9,
+        quantidade,
+        lote: 'L1'
+      }
+    })).resolves.toMatchObject({ quantidade });
+  });
+
+  it.each([
+    ['negativa', -1],
+    ['decimal', 1.5],
+    ['texto', 'abc']
+  ])('rejeita quantidade %s', async (description, quantidade) => {
+    const repository = createRepositoryMock();
+    const { service } = createService({ repository });
+
+    await expect(service.saveOcCount({
+      user: estoquista,
+      empresaId: 1,
+      payload: {
+        oc_id: 55,
+        item_id: 9,
+        quantidade,
+        lote: 'L1'
+      }
+    })).rejects.toMatchObject({
+      message: 'Quantidade deve ser um numero inteiro maior ou igual a zero',
+      statusCode: 400,
+      errorCode: ERROR_CODES.VALIDATION_ERROR
+    });
+    expect(repository.withTransaction).not.toHaveBeenCalled();
+  });
+
+  it('caracteriza comportamento legado: segunda contagem do mesmo item cria novo evento e sobrescreve saldo atual', async () => {
+    const repository = createRepositoryMock({
+      findOcById: jest.fn().mockResolvedValue({
+        id: 55,
+        gestor_id: 11,
+        estoquista_id: 22,
+        empresa_id: 1,
+        status: OC_STATUS.OPEN
+      }),
+      findItemById: jest.fn()
+        .mockResolvedValueOnce({
+          id: 9,
+          oc_id: 55,
+          status: ITEM_STATUS.PENDING
+        })
+        .mockResolvedValueOnce({
+          id: 9,
+          oc_id: 55,
+          status: ITEM_STATUS.COUNTED
+        }),
+      createCount: jest.fn()
+        .mockResolvedValueOnce({ id: 300, quantidade: 8 })
+        .mockResolvedValueOnce({ id: 301, quantidade: 9 }),
+      updateItemCount: jest.fn().mockResolvedValue({})
+    });
+    const { service } = createService({ repository });
+
+    await service.saveOcCount({
+      user: estoquista,
+      empresaId: 1,
+      payload: { oc_id: 55, item_id: 9, quantidade: 8, lote: 'L1' }
+    });
+    await service.saveOcCount({
+      user: estoquista,
+      empresaId: 1,
+      payload: { oc_id: 55, item_id: 9, quantidade: 9, lote: 'L2' }
+    });
+
+    expect(repository.createCount).toHaveBeenCalledTimes(2);
+    expect(repository.updateItemCount).toHaveBeenLastCalledWith({
+      ocId: 55,
+      itemId: 9,
+      quantidade: 9,
+      lote: 'L2',
+      countedStatus: ITEM_STATUS.COUNTED
+    });
+  });
+
+  it('bloqueia criacao de OC para estoquista inativo', async () => {
+    const repository = createRepositoryMock({
+      findUserById: jest.fn().mockResolvedValue({ id: 22, role: 'estoquista', ativo: false })
+    });
+    const { service } = createService({ repository });
+
+    await expect(service.createOcWithItems({
+      user: gestor,
+      empresaId: 1,
+      payload: {
+        estoquista_id: 22,
+        items: [{ produto: 'Seringa', codigo: 'SER', endereco: 'A1', saldo_sistema: 12 }]
+      }
+    })).rejects.toMatchObject({
+      message: 'O estoquista informado esta inativo',
+      statusCode: 400,
+      errorCode: ERROR_CODES.VALIDATION_ERROR
+    });
+    expect(repository.createOc).not.toHaveBeenCalled();
+  });
+
+  it('cria nova OC com 1 produto, 1 localizacao e assignment inicial', async () => {
+    const repository = createInMemoryOcRepository({
+      users: [
+        { id: 11, nome: 'Gestor', role: 'gestor', empresas: [{ id: 1 }] },
+        { id: 22, nome: 'Estoquista', role: 'estoquista', nivel_estoquista: 1, ativo: true, empresas: [{ id: 1 }] }
+      ]
+    });
+    const { service } = createService({ repository });
+
+    const oc = await service.createOcWithItems({
+      user: gestor,
+      empresaId: 1,
+      payload: {
+        estoquista_id: 22,
+        items: [
+          {
+            produto: 'Dipirona 500mg',
+            codigo: '789123',
+            codigo_barras: '789123456789',
+            endereco: 'A1-01-01',
+            saldo_sistema: 60,
+            validade: '12/2026'
+          }
+        ]
+      }
+    });
+    const state = repository.__getState();
+
+    expect(oc.qtd).toBe(1);
+    expect(state.ocs).toHaveLength(1);
+    expect(state.ocProdutos).toHaveLength(1);
+    expect(state.ocLocalizacoes).toHaveLength(1);
+    expect(state.ocAssignments).toEqual([
+      expect.objectContaining({
+        oc_id: oc.id,
+        ciclo: 1,
+        fase: 'contagem',
+        estoquista_id: 22,
+        status: 'ativo'
+      })
+    ]);
+    expect(state.items).toHaveLength(1);
+    expect(state.items[0]).toMatchObject({
+      produto: 'Dipirona 500mg',
+      endereco: 'A1-01-01',
+      codigo: '789123',
+      codigo_barras: '789123456789',
+      validade: '2026-12-01'
+    });
+    expect(state.ocProdutos[0]).toMatchObject({
+      descricao_snapshot: 'Dipirona 500mg',
+      codigo: '789123',
+      saldo_sistema_snapshot: 60
+    });
+    expect(state.ocLocalizacoes[0]).toMatchObject({
+      endereco_snapshot: 'A1-01-01',
+      codigo_barras_snapshot: '789123456789',
+      validade_snapshot: '2026-12-01'
+    });
+  });
+
+  it('agrupa 1 produto com 3 localizacoes como 1 item administrativo', async () => {
+    const repository = createInMemoryOcRepository({
+      users: [
+        { id: 11, nome: 'Gestor', role: 'gestor', empresas: [{ id: 1 }] },
+        { id: 22, nome: 'Estoquista', role: 'estoquista', nivel_estoquista: 1, ativo: true, empresas: [{ id: 1 }] }
+      ]
+    });
+    const { service } = createService({ repository });
+
+    const oc = await service.createOcWithItems({
+      user: gestor,
+      empresaId: 1,
+      payload: {
+        estoquista_id: 22,
+        items: [
+          { produto: 'Dipirona 500mg', codigo: '789123', endereco: 'A1-01-01', saldo_sistema: 10 },
+          { produto: 'Dipirona 500mg', codigo: '789123', endereco: 'A1-02-01', saldo_sistema: 20 },
+          { produto: 'Dipirona 500mg', codigo: '789123', endereco: 'A1-03-01', saldo_sistema: 30 }
+        ]
+      }
+    });
+    const state = repository.__getState();
+    const list = await service.listMyGestorOcs({ user: gestor, empresaId: 1 });
+
+    expect(oc.qtd).toBe(1);
+    expect(state.ocProdutos).toHaveLength(1);
+    expect(state.ocProdutos[0].saldo_sistema_snapshot).toBe(60);
+    expect(state.ocLocalizacoes).toHaveLength(3);
+    expect(state.items).toHaveLength(3);
+    expect(list[0].qtd).toBe(1);
+  });
+
+  it('cria 2 produtos com 4 localizacoes e preserva snapshots', async () => {
+    const repository = createInMemoryOcRepository({
+      users: [
+        { id: 11, nome: 'Gestor', role: 'gestor', empresas: [{ id: 1 }] },
+        { id: 22, nome: 'Estoquista', role: 'estoquista', nivel_estoquista: 1, ativo: true, empresas: [{ id: 1 }] }
+      ]
+    });
+    const { service } = createService({ repository });
+    const produtoA = { produto: 'Produto A', codigo: 'A', endereco: 'A1-01-01', saldo_sistema: 100 };
+
+    await service.createOcWithItems({
+      user: gestor,
+      empresaId: 1,
+      payload: {
+        estoquista_id: 22,
+        items: [
+          produtoA,
+          { produto: 'Produto A', codigo: 'A', endereco: 'A1-02-01', saldo_sistema: 25 },
+          { produto: 'Produto B', codigo: 'B', endereco: 'B1-01-01', saldo_sistema: 50 },
+          { produto: 'Produto B', codigo: 'B', endereco: 'B1-02-01', saldo_sistema: 75 }
+        ]
+      }
+    });
+    produtoA.saldo_sistema = 250;
+    produtoA.endereco = 'Z9-99-99';
+    const state = repository.__getState();
+
+    expect(state.ocProdutos).toHaveLength(2);
+    expect(state.ocLocalizacoes).toHaveLength(4);
+    expect(state.items).toHaveLength(4);
+    expect(state.ocProdutos.find((item) => item.codigo === 'A')).toMatchObject({
+      saldo_sistema_snapshot: 125
+    });
+    expect(state.ocLocalizacoes.map((item) => item.endereco_snapshot)).toContain('A1-01-01');
+    expect(state.ocLocalizacoes.map((item) => item.endereco_snapshot)).not.toContain('Z9-99-99');
+  });
+
+  it('faz rollback completo se uma localizacao falhar', async () => {
+    const repository = createInMemoryOcRepository({
+      users: [
+        { id: 11, nome: 'Gestor', role: 'gestor', empresas: [{ id: 1 }] },
+        { id: 22, nome: 'Estoquista', role: 'estoquista', nivel_estoquista: 1, ativo: true, empresas: [{ id: 1 }] }
+      ],
+      failOnCreateOcLocalizacao: true
+    });
+    const { service } = createService({ repository });
+
+    await expect(service.createOcWithItems({
+      user: gestor,
+      empresaId: 1,
+      payload: {
+        estoquista_id: 22,
+        items: [
+          { produto: 'Produto A', codigo: 'A', endereco: 'A1-01-01', saldo_sistema: 10 },
+          { produto: 'Produto A', codigo: 'A', endereco: 'A1-02-01', saldo_sistema: 20 }
+        ]
+      }
+    })).rejects.toThrow('location failed');
+
+    expect(repository.__getState()).toMatchObject({
+      ocs: [],
+      ocProdutos: [],
+      ocLocalizacoes: [],
+      ocAssignments: [],
+      items: []
+    });
+  });
+
+  it('rejeita estoquista nivel 2 para primeira contagem', async () => {
+    const repository = createRepositoryMock({
+      findUserById: jest.fn().mockResolvedValue({ id: 22, role: 'estoquista', ativo: true, nivel_estoquista: 2 })
+    });
+    const { service } = createService({ repository });
+
+    await expect(service.createOcWithItems({
+      user: gestor,
+      empresaId: 1,
+      payload: {
+        estoquista_id: 22,
+        items: [{ produto: 'Seringa', codigo: 'SER', endereco: 'A1', saldo_sistema: 12 }]
+      }
+    })).rejects.toMatchObject({
+      message: 'A primeira contagem deve ser atribuida a um estoquista nivel 1',
+      statusCode: 400
+    });
+  });
+
+  it('rejeita estoquista nivel 3 para primeira contagem', async () => {
+    const repository = createRepositoryMock({
+      findUserById: jest.fn().mockResolvedValue({ id: 22, role: 'estoquista', ativo: true, nivel_estoquista: 3 })
+    });
+    const { service } = createService({ repository });
+
+    await expect(service.createOcWithItems({
+      user: gestor,
+      empresaId: 1,
+      payload: {
+        estoquista_id: 22,
+        items: [{ produto: 'Seringa', codigo: 'SER', endereco: 'A1', saldo_sistema: 12 }]
+      }
+    })).rejects.toMatchObject({
+      message: 'A primeira contagem deve ser atribuida a um estoquista nivel 1',
+      statusCode: 400
+    });
+  });
+
+  it('rejeita estoquista sem vinculo com a empresa ativa', async () => {
+    const repository = createRepositoryMock({
+      findUserById: jest.fn().mockResolvedValue({ id: 22, role: 'estoquista', ativo: true, nivel_estoquista: 1 }),
+      userHasEmpresaAccess: jest.fn().mockResolvedValue(false)
+    });
+    const { service } = createService({ repository });
+
+    await expect(service.createOcWithItems({
+      user: gestor,
+      empresaId: 1,
+      payload: {
+        estoquista_id: 22,
+        items: [{ produto: 'Seringa', codigo: 'SER', endereco: 'A1', saldo_sistema: 12 }]
+      }
+    })).rejects.toMatchObject({
+      message: 'Usuario nao tem acesso a esta empresa',
+      statusCode: 403
+    });
+  });
+
+  it('rejeita localizacao duplicada para o mesmo produto', async () => {
+    const repository = createRepositoryMock({
+      findUserById: jest.fn().mockResolvedValue({ id: 22, role: 'estoquista', ativo: true, nivel_estoquista: 1 })
+    });
+    const { service } = createService({ repository });
+
+    await expect(service.createOcWithItems({
+      user: gestor,
+      empresaId: 1,
+      payload: {
+        estoquista_id: 22,
+        items: [
+          { produto: 'Dipirona', codigo: 'DIP', endereco: 'A1-01-01', saldo_sistema: 10 },
+          { produto: 'Dipirona', codigo: 'DIP', endereco: 'A1-01-01', saldo_sistema: 10 }
+        ]
+      }
+    })).rejects.toMatchObject({
+      message: 'Localizacao duplicada para o mesmo produto na OC',
+      statusCode: 409,
+      errorCode: ERROR_CODES.CONFLICT
+    });
+  });
+
+  it('traduz constraint de produto duplicado para erro de dominio', async () => {
+    const duplicateError = new Error('duplicate key value violates unique constraint');
+    duplicateError.code = '23505';
+    duplicateError.constraint = 'idx_oc_produtos_oc_id_codigo_unique';
+    const repository = createRepositoryMock({
+      findUserById: jest.fn().mockResolvedValue({ id: 22, role: 'estoquista', ativo: true, nivel_estoquista: 1 }),
+      getNextIdentity: jest.fn().mockResolvedValue({ nextId: 100, codigo: 'OC-000100' }),
+      createOc: jest.fn().mockResolvedValue({ id: 100, gestor_id: 11, estoquista_id: 22, empresa_id: 1, status: OC_STATUS.OPEN }),
+      createOcProduto: jest.fn().mockRejectedValue(duplicateError)
+    });
+    const { service } = createService({ repository });
+
+    await expect(service.createOcWithItems({
+      user: gestor,
+      empresaId: 1,
+      payload: {
+        estoquista_id: 22,
+        items: [{ produto: 'Dipirona', codigo: 'DIP', endereco: 'A1-01-01', saldo_sistema: 10 }]
+      }
+    })).rejects.toMatchObject({
+      message: 'Produto duplicado na OC',
+      statusCode: 409,
+      errorCode: ERROR_CODES.CONFLICT
+    });
+    expect(repository.createItem).not.toHaveBeenCalled();
+  });
+
+  it('nao vaza saldo esperado para estoquista em OC criada no novo modelo', async () => {
+    const repository = createInMemoryOcRepository({
+      users: [
+        { id: 11, nome: 'Gestor', role: 'gestor', empresas: [{ id: 1 }] },
+        { id: 22, nome: 'Estoquista', role: 'estoquista', nivel_estoquista: 1, ativo: true, empresas: [{ id: 1 }] }
+      ]
+    });
+    const { service } = createService({ repository });
+    const oc = await service.createOcWithItems({
+      user: gestor,
+      empresaId: 1,
+      payload: {
+        estoquista_id: 22,
+        items: [{ produto: 'Dipirona', codigo: 'DIP', endereco: 'A1-01-01', saldo_sistema: 10 }]
+      }
+    });
+
+    const items = await service.listOcItems({ user: estoquista, empresaId: 1, ocId: oc.id });
+
+    expect(items[0]).not.toHaveProperty('saldo_sistema');
+    expect(items[0]).not.toHaveProperty('diferenca');
+  });
+
+  it('bloqueia envio para recontagem com novo estoquista inativo', async () => {
+    const repository = createRepositoryMock({
+      findOcById: jest.fn().mockResolvedValue({
+        id: 55,
+        gestor_id: 11,
+        estoquista_id: 22,
+        empresa_id: 1,
+        status: OC_STATUS.WAITING_APPROVAL
+      }),
+      findUserById: jest.fn().mockResolvedValue({ id: 33, role: 'estoquista', ativo: false })
+    });
+    const { service } = createService({ repository });
+
+    await expect(service.sendOcToRecount({
+      user: admin,
+      empresaId: 1,
+      ocId: 55,
+      itemIds: [9],
+      novoEstoquistaId: 33
+    })).rejects.toMatchObject({
+      message: 'O estoquista informado esta inativo',
+      statusCode: 400,
+      errorCode: ERROR_CODES.VALIDATION_ERROR
+    });
+    expect(repository.findItemsByIdsForUpdate).not.toHaveBeenCalled();
+  });
+
+  it('bloqueia aprovacao quando OC aguardando aprovacao ainda possui item pendente', async () => {
+    const repository = createRepositoryMock({
+      findOcById: jest.fn().mockResolvedValue({
+        id: 55,
+        gestor_id: 11,
+        estoquista_id: 22,
+        empresa_id: 1,
+        status: OC_STATUS.WAITING_APPROVAL
+      }),
+      getFinalizeValidation: jest.fn().mockResolvedValue({
+        oc_existe: true,
+        qtd_ativos: 2,
+        qtd_contados: 1
+      })
+    });
+    const { service } = createService({ repository });
+
+    await expect(service.approveOc({
+      user: gestor,
+      empresaId: 1,
+      ocId: 55
+    })).rejects.toMatchObject({
+      message: 'OC possui itens pendentes de contagem',
+      statusCode: 400,
+      errorCode: ERROR_CODES.VALIDATION_ERROR
+    });
+    expect(repository.approveItems).not.toHaveBeenCalled();
+    expect(repository.updateOcStatus).not.toHaveBeenCalled();
   });
 
   it('envia itens unicos para recontagem e aprova os demais', async () => {

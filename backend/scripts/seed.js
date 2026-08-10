@@ -3,16 +3,11 @@ const path = require('path');
 const bcrypt = require('bcrypt');
 const pool = require('../src/config/db');
 const { bcryptSaltRounds } = require('../src/config/security');
+const { EMPRESAS_FIXAS } = require('../src/modules/empresas/empresaConstants');
 
 const seedsDir = path.resolve(__dirname, '../seeds');
 
-const seedEmpresas = [
-  { codigo: 'DIMEBRAS_PR', nome: 'Dimebras PR' },
-  { codigo: 'DIMEBRAS_SC', nome: 'Dimebras SC' },
-  { codigo: 'DIMEBRAS_MT', nome: 'Dimebras MT' },
-  { codigo: 'DIMEBRAS_MS', nome: 'Dimebras MS' },
-  { codigo: 'ALFAMED_MS', nome: 'Alfamed MS' }
-];
+const seedEmpresas = EMPRESAS_FIXAS;
 
 const seedUsers = [
   {
@@ -65,13 +60,15 @@ async function runSqlSeeds(client) {
 async function upsertSeedEmpresas(client) {
   for (const empresa of seedEmpresas) {
     await client.query(
-      `INSERT INTO empresas (codigo, nome)
-       VALUES ($1, $2)
-       ON CONFLICT (codigo) DO NOTHING`,
-      [empresa.codigo, empresa.nome]
+      `INSERT INTO empresas (id, codigo, nome)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (codigo) DO UPDATE
+       SET nome = EXCLUDED.nome,
+           ativo = true`,
+      [empresa.id, empresa.codigo, empresa.nome]
     );
 
-    console.log(`Empresa seed garantida: ${empresa.codigo}`);
+    console.log(`Empresa seed garantida: ${empresa.codigo} (${empresa.id})`);
   }
 }
 

@@ -58,7 +58,7 @@ function createOcRepository(db = pool) {
 
     async findUserById(userId) {
       const result = await db.query(
-        `SELECT id, nome, role
+        `SELECT id, nome, role, nivel_estoquista, ativo
          FROM users
          WHERE id = $1`,
         [userId]
@@ -91,24 +91,115 @@ function createOcRepository(db = pool) {
       return result.rows[0];
     },
 
-    async createItem({ ocId, produto, saldoSistema, status }) {
+    async createOcProduto({
+      ocId,
+      produtoExternoId,
+      codigo,
+      codigoBarras,
+      descricaoSnapshot,
+      saldoSistemaSnapshot,
+      status
+    }) {
+      const result = await db.query(
+        `INSERT INTO oc_produtos (
+           oc_id,
+           produto_externo_id,
+           codigo,
+           codigo_barras,
+           descricao_snapshot,
+           saldo_sistema_snapshot,
+           status
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         RETURNING *`,
+        [
+          ocId,
+          produtoExternoId,
+          codigo,
+          codigoBarras,
+          descricaoSnapshot,
+          saldoSistemaSnapshot,
+          status
+        ]
+      );
+
+      return result.rows[0];
+    },
+
+    async createOcLocalizacao({
+      ocProdutoId,
+      localizacaoExternaId,
+      enderecoSnapshot,
+      codigoBarrasSnapshot,
+      validadeSnapshot,
+      status
+    }) {
+      const result = await db.query(
+        `INSERT INTO oc_localizacoes (
+           oc_produto_id,
+           localizacao_externa_id,
+           endereco_snapshot,
+           codigo_barras_snapshot,
+           validade_snapshot,
+           status
+         )
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING *`,
+        [
+          ocProdutoId,
+          localizacaoExternaId,
+          enderecoSnapshot,
+          codigoBarrasSnapshot,
+          validadeSnapshot,
+          status
+        ]
+      );
+
+      return result.rows[0];
+    },
+
+    async createOcAssignment({ ocId, ciclo, fase, estoquistaId, status }) {
+      const result = await db.query(
+        `INSERT INTO oc_assignments (oc_id, ciclo, fase, estoquista_id, status)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING *`,
+        [ocId, ciclo, fase, estoquistaId, status]
+      );
+
+      return result.rows[0];
+    },
+
+    async createItem({ ocId, produto, saldoSistema, endereco, codigo, codigoBarras, validade, status }) {
       await db.query(
-        `INSERT INTO oc_items (oc_id, produto, saldo_sistema, status)
-         VALUES ($1, $2, $3, $4)`,
-        [ocId, produto, saldoSistema, status]
+        `INSERT INTO oc_items (
+           oc_id,
+           produto,
+           saldo_sistema,
+           endereco,
+           codigo,
+           codigo_barras,
+           validade,
+           status
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [ocId, produto, saldoSistema, endereco, codigo, codigoBarras, validade, status]
       );
     },
 
     async listByGestor({ gestorId, empresaId }) {
       const result = await db.query(
         `SELECT ocs.*,
-                COUNT(DISTINCT oc_items.id)::int AS qtd,
+                CASE
+                  WHEN COUNT(DISTINCT oc_produtos.id) > 0 THEN COUNT(DISTINCT oc_produtos.id)
+                  ELSE COUNT(DISTINCT oc_items.id)
+                END::int AS qtd,
                 estoquista.nome AS estoquista_nome,
                 empresas.codigo AS empresa_codigo,
                 empresas.nome AS empresa_nome,
                 MAX(contagens.created_at) AS ultima_contagem_em
          FROM ocs
          LEFT JOIN oc_items ON oc_items.oc_id = ocs.id
+         LEFT JOIN oc_produtos ON oc_produtos.oc_id = ocs.id
          LEFT JOIN contagens ON contagens.oc_id = ocs.id
          LEFT JOIN users estoquista ON estoquista.id = ocs.estoquista_id
          LEFT JOIN empresas ON empresas.id = ocs.empresa_id
@@ -153,13 +244,18 @@ function createOcRepository(db = pool) {
 
     async listApprovalForAdmin({ empresaId, openStatus, waitingApprovalStatus }) {
       const result = await db.query(
-        `SELECT ocs.*, COUNT(oc_items.id)::int AS qtd,
+        `SELECT ocs.*,
+                CASE
+                  WHEN COUNT(DISTINCT oc_produtos.id) > 0 THEN COUNT(DISTINCT oc_produtos.id)
+                  ELSE COUNT(DISTINCT oc_items.id)
+                END::int AS qtd,
                 gestor.nome AS gestor_nome,
                 estoquista.nome AS estoquista_nome,
                 empresas.codigo AS empresa_codigo,
                 empresas.nome AS empresa_nome
          FROM ocs
          LEFT JOIN oc_items ON oc_items.oc_id = ocs.id
+         LEFT JOIN oc_produtos ON oc_produtos.oc_id = ocs.id
          LEFT JOIN users gestor ON gestor.id = ocs.gestor_id
          LEFT JOIN users estoquista ON estoquista.id = ocs.estoquista_id
          LEFT JOIN empresas ON empresas.id = ocs.empresa_id
@@ -175,13 +271,18 @@ function createOcRepository(db = pool) {
 
     async listApprovalForGestor({ gestorId, empresaId, openStatus, waitingApprovalStatus }) {
       const result = await db.query(
-        `SELECT ocs.*, COUNT(oc_items.id)::int AS qtd,
+        `SELECT ocs.*,
+                CASE
+                  WHEN COUNT(DISTINCT oc_produtos.id) > 0 THEN COUNT(DISTINCT oc_produtos.id)
+                  ELSE COUNT(DISTINCT oc_items.id)
+                END::int AS qtd,
                 gestor.nome AS gestor_nome,
                 estoquista.nome AS estoquista_nome,
                 empresas.codigo AS empresa_codigo,
                 empresas.nome AS empresa_nome
          FROM ocs
          LEFT JOIN oc_items ON oc_items.oc_id = ocs.id
+         LEFT JOIN oc_produtos ON oc_produtos.oc_id = ocs.id
          LEFT JOIN users gestor ON gestor.id = ocs.gestor_id
          LEFT JOIN users estoquista ON estoquista.id = ocs.estoquista_id
          LEFT JOIN empresas ON empresas.id = ocs.empresa_id

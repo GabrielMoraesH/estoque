@@ -10,16 +10,26 @@ function createInMemoryOcRepository({
   users = [],
   ocs = [],
   items = [],
-  counts = []
+  counts = [],
+  ocProdutos = [],
+  ocLocalizacoes = [],
+  ocAssignments = [],
+  failOnCreateOcLocalizacao = false
 } = {}) {
   const state = {
     users: users.map(clone),
     ocs: ocs.map(clone),
     items: items.map(clone),
     counts: counts.map(clone),
+    ocProdutos: ocProdutos.map(clone),
+    ocLocalizacoes: ocLocalizacoes.map(clone),
+    ocAssignments: ocAssignments.map(clone),
     nextOcId: ocs.reduce((maxId, oc) => Math.max(maxId, Number(oc.id || 0)), 0) + 1,
     nextItemId: items.reduce((maxId, item) => Math.max(maxId, Number(item.id || 0)), 0) + 1,
-    nextCountId: counts.reduce((maxId, count) => Math.max(maxId, Number(count.id || 0)), 0) + 1
+    nextCountId: counts.reduce((maxId, count) => Math.max(maxId, Number(count.id || 0)), 0) + 1,
+    nextOcProdutoId: ocProdutos.reduce((maxId, item) => Math.max(maxId, Number(item.id || 0)), 0) + 1,
+    nextOcLocalizacaoId: ocLocalizacoes.reduce((maxId, item) => Math.max(maxId, Number(item.id || 0)), 0) + 1,
+    nextOcAssignmentId: ocAssignments.reduce((maxId, item) => Math.max(maxId, Number(item.id || 0)), 0) + 1
   };
 
   function createRepository(currentState) {
@@ -33,9 +43,15 @@ function createInMemoryOcRepository({
         currentState.ocs = snapshot.ocs;
         currentState.items = snapshot.items;
         currentState.counts = snapshot.counts;
+        currentState.ocProdutos = snapshot.ocProdutos;
+        currentState.ocLocalizacoes = snapshot.ocLocalizacoes;
+        currentState.ocAssignments = snapshot.ocAssignments;
         currentState.nextOcId = snapshot.nextOcId;
         currentState.nextItemId = snapshot.nextItemId;
         currentState.nextCountId = snapshot.nextCountId;
+        currentState.nextOcProdutoId = snapshot.nextOcProdutoId;
+        currentState.nextOcLocalizacaoId = snapshot.nextOcLocalizacaoId;
+        currentState.nextOcAssignmentId = snapshot.nextOcAssignmentId;
 
         return result;
       },
@@ -63,7 +79,9 @@ function createInMemoryOcRepository({
         return clone({
           id: user.id,
           nome: user.nome,
-          role: user.role
+          role: user.role,
+          nivel_estoquista: user.nivel_estoquista ?? null,
+          ativo: user.ativo !== false
         });
       },
 
@@ -94,12 +112,119 @@ function createInMemoryOcRepository({
         return clone(oc);
       },
 
-      async createItem({ ocId, produto, saldoSistema, status }) {
+      async createOcProduto({
+        ocId,
+        produtoExternoId,
+        codigo,
+        codigoBarras,
+        descricaoSnapshot,
+        saldoSistemaSnapshot,
+        status
+      }) {
+        const hasDuplicate = currentState.ocProdutos.some((produto) => {
+          if (Number(produto.oc_id) !== Number(ocId)) {
+            return false;
+          }
+
+          if (produtoExternoId) {
+            return produto.produto_externo_id === produtoExternoId;
+          }
+
+          return codigo && produto.codigo === codigo && !produto.produto_externo_id;
+        });
+
+        if (hasDuplicate) {
+          const err = new Error('duplicate oc produto');
+          err.code = '23505';
+          err.constraint = produtoExternoId
+            ? 'idx_oc_produtos_oc_id_produto_externo_id_unique'
+            : 'idx_oc_produtos_oc_id_codigo_unique';
+          throw err;
+        }
+
+        const produto = {
+          id: currentState.nextOcProdutoId++,
+          oc_id: Number(ocId),
+          produto_externo_id: produtoExternoId || null,
+          codigo: codigo || null,
+          codigo_barras: codigoBarras || null,
+          descricao_snapshot: descricaoSnapshot,
+          saldo_sistema_snapshot: saldoSistemaSnapshot,
+          status
+        };
+        currentState.ocProdutos.push(produto);
+        return clone(produto);
+      },
+
+      async createOcLocalizacao({
+        ocProdutoId,
+        localizacaoExternaId,
+        enderecoSnapshot,
+        codigoBarrasSnapshot,
+        validadeSnapshot,
+        status
+      }) {
+        if (failOnCreateOcLocalizacao) {
+          throw new Error('location failed');
+        }
+
+        const hasDuplicate = currentState.ocLocalizacoes.some((localizacao) => {
+          if (Number(localizacao.oc_produto_id) !== Number(ocProdutoId)) {
+            return false;
+          }
+
+          if (localizacaoExternaId) {
+            return localizacao.localizacao_externa_id === localizacaoExternaId;
+          }
+
+          return localizacao.endereco_snapshot === enderecoSnapshot && !localizacao.localizacao_externa_id;
+        });
+
+        if (hasDuplicate) {
+          const err = new Error('duplicate oc localizacao');
+          err.code = '23505';
+          err.constraint = localizacaoExternaId
+            ? 'idx_oc_localizacoes_produto_localizacao_externa_unique'
+            : 'idx_oc_localizacoes_produto_endereco_unique';
+          throw err;
+        }
+
+        const localizacao = {
+          id: currentState.nextOcLocalizacaoId++,
+          oc_produto_id: Number(ocProdutoId),
+          localizacao_externa_id: localizacaoExternaId || null,
+          endereco_snapshot: enderecoSnapshot,
+          codigo_barras_snapshot: codigoBarrasSnapshot || null,
+          validade_snapshot: validadeSnapshot || null,
+          status
+        };
+        currentState.ocLocalizacoes.push(localizacao);
+        return clone(localizacao);
+      },
+
+      async createOcAssignment({ ocId, ciclo, fase, estoquistaId, status }) {
+        const assignment = {
+          id: currentState.nextOcAssignmentId++,
+          oc_id: Number(ocId),
+          ciclo,
+          fase,
+          estoquista_id: Number(estoquistaId),
+          status
+        };
+        currentState.ocAssignments.push(assignment);
+        return clone(assignment);
+      },
+
+      async createItem({ ocId, produto, saldoSistema, endereco, codigo, codigoBarras, validade, status }) {
         currentState.items.push({
           id: currentState.nextItemId++,
           oc_id: Number(ocId),
           produto,
           saldo_sistema: saldoSistema,
+          endereco: endereco || null,
+          codigo: codigo || null,
+          codigo_barras: codigoBarras || null,
+          validade: validade || null,
           saldo_contado: null,
           lote: null,
           diferenca: null,
@@ -113,10 +238,11 @@ function createInMemoryOcRepository({
           .filter((oc) => Number(oc.empresa_id) === Number(empresaId))
           .map((oc) => {
             const ocItems = currentState.items.filter((item) => Number(item.oc_id) === Number(oc.id));
+            const products = currentState.ocProdutos.filter((item) => Number(item.oc_id) === Number(oc.id));
             const estoquista = currentState.users.find((user) => Number(user.id) === Number(oc.estoquista_id));
             return {
               ...clone(oc),
-              qtd: ocItems.length,
+              qtd: products.length > 0 ? products.length : ocItems.length,
               estoquista_nome: estoquista?.nome || null,
               ultima_contagem_em: null
             };
@@ -268,6 +394,10 @@ function createInMemoryOcRepository({
           qtd_ativos: activeItems.length,
           qtd_contados: countedItems.length
         };
+      },
+
+      __getState() {
+        return clone(currentState);
       }
     };
 
@@ -287,10 +417,11 @@ function listApproval({ currentState, gestorId, empresaId, openStatus, waitingAp
       const gestor = currentState.users.find((user) => Number(user.id) === Number(oc.gestor_id));
       const estoquista = currentState.users.find((user) => Number(user.id) === Number(oc.estoquista_id));
       const ocItems = currentState.items.filter((item) => Number(item.oc_id) === Number(oc.id));
+      const products = currentState.ocProdutos.filter((item) => Number(item.oc_id) === Number(oc.id));
 
       return {
         ...clone(oc),
-        qtd: ocItems.length,
+        qtd: products.length > 0 ? products.length : ocItems.length,
         gestor_nome: gestor?.nome || null,
         estoquista_nome: estoquista?.nome || null
       };

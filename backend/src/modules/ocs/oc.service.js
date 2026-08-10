@@ -13,8 +13,16 @@ const noopAudit = {
   async logAction() {}
 };
 
+const ASSIGNMENT_STATUS = {
+  ACTIVE: 'ativo'
+};
+
 function badRequest(message) {
   return new AppError(message, 400, ERROR_CODES.VALIDATION_ERROR);
+}
+
+function conflict(message) {
+  return new AppError(message, 409, ERROR_CODES.CONFLICT);
 }
 
 function forbidden(message) {
@@ -38,6 +46,29 @@ function createOcService({ repository, audit = noopAudit } = {}) {
 
   function isEstoquista(user) {
     return user?.role === 'estoquista';
+  }
+
+  function toEstoquistaItemDto(item) {
+    const {
+      saldo_sistema,
+      diferenca,
+      primeira_contagem_user_id,
+      primeira_contagem_usuario_nome,
+      primeira_contagem_em,
+      ultima_contagem_user_id,
+      ultima_contagem_usuario_nome,
+      ultima_contagem_em,
+      total_contagens,
+      ...safeItem
+    } = item;
+
+    return safeItem;
+  }
+
+  function assertValidCountQuantity(quantidade) {
+    if (!Number.isInteger(quantidade) || quantidade < 0) {
+      throw badRequest('Quantidade deve ser um numero inteiro maior ou igual a zero');
+    }
   }
 
   function assertSameUserOrAdmin(user, targetUserId) {
@@ -95,6 +126,26 @@ function createOcService({ repository, audit = noopAudit } = {}) {
 
     if (user.role !== 'estoquista') {
       throw badRequest('O usuario informado nao e um estoquista');
+    }
+
+    return user;
+  }
+
+  async function assertEstoquistaAvailableForAssignment(estoquistaId, repo = repository) {
+    const user = await assertEstoquistaExists(estoquistaId, repo);
+
+    if (user.ativo === false) {
+      throw badRequest('O estoquista informado esta inativo');
+    }
+
+    return user;
+  }
+
+  async function assertEstoquistaAvailableForFirstCount(estoquistaId, repo = repository) {
+    const user = await assertEstoquistaAvailableForAssignment(estoquistaId, repo);
+
+    if (Number(user.nivel_estoquista) !== 1) {
+      throw badRequest('A primeira contagem deve ser atribuida a um estoquista nivel 1');
     }
 
     return user;
@@ -164,6 +215,26 @@ function createOcService({ repository, audit = noopAudit } = {}) {
     }
   }
 
+  async function ensureOcCompleteForApproval(ocId, repo = repository) {
+    const validation = await repo.getFinalizeValidation({
+      ocId,
+      approvedStatus: ITEM_STATUS.APPROVED,
+      countedStatus: ITEM_STATUS.COUNTED
+    });
+
+    if (!validation.oc_existe) {
+      throw notFound('OC nao encontrada');
+    }
+
+    if (Number(validation.qtd_ativos || 0) === 0) {
+      throw badRequest('Nenhum item disponivel para aprovar esta OC');
+    }
+
+    if (Number(validation.qtd_contados || 0) !== Number(validation.qtd_ativos || 0)) {
+      throw badRequest('OC possui itens pendentes de contagem');
+    }
+  }
+
   function ensureItemAvailableForCount(item) {
     if (!assertItemStatus(item, [ITEM_STATUS.PENDING, ITEM_STATUS.COUNTED, ITEM_STATUS.RECOUNT])) {
       throw badRequest('Item nao esta disponivel para contagem');
@@ -174,6 +245,146 @@ function createOcService({ repository, audit = noopAudit } = {}) {
     if (!assertItemStatus(item, [ITEM_STATUS.COUNTED, ITEM_STATUS.APPROVED])) {
       throw badRequest('Item nao esta disponivel para recontagem');
     }
+  }
+
+  function cleanText(value) {
+    const text = String(value ?? '').trim();
+    return text || null;
+  }
+
+  function normalizeNumber(value) {
+    const numberValue = Number(value);
+    return Number.isFinite(numberValue) ? numberValue : 0;
+  }
+
+  function normalizeDateSnapshot(value) {
+    const text = cleanText(value);
+
+    if (!text) {
+      return null;
+    }
+
+    const isoDate = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (isoDate) {
+      return text;
+    }
+
+    const monthYear = text.match(/^(\d{2})\/(\d{4})$/);
+    if (monthYear) {
+      return `${monthYear[2]}-${monthYear[1]}-01`;
+    }
+
+    return null;
+  }
+
+  function getProductIdentity(item) {
+    const produtoExternoId = cleanText(item.produto_externo_id);
+    if (produtoExternoId) {
+      return { type: 'produto_externo_id', value: produtoExternoId };
+    }
+
+    const codigo = cleanText(item.codigo);
+    if (codigo) {
+      return { type: 'codigo', value: codigo };
+    }
+
+    const produto = cleanText(item.produto);
+    if (produto) {
+      return { type: 'produto_fallback', value: produto.toLowerCase() };
+    }
+
+    return null;
+  }
+
+  function getLocationIdentity(item) {
+    const localizacaoExternaId = cleanText(item.localizacao_externa_id);
+    if (localizacaoExternaId) {
+      return { type: 'localizacao_externa_id', value: localizacaoExternaId };
+    }
+
+    const endereco = cleanText(item.endereco);
+    if (endereco) {
+      return { type: 'endereco', value: endereco };
+    }
+
+    return null;
+  }
+
+  function groupItemsByProduct(items) {
+    const grouped = new Map();
+
+    for (const item of items) {
+      const produto = cleanText(item?.produto);
+      const endereco = cleanText(item?.endereco);
+      const productIdentity = getProductIdentity(item || {});
+      const locationIdentity = getLocationIdentity(item || {});
+
+      if (!produto) {
+        throw badRequest('Produto invalido na OC');
+      }
+
+      if (!endereco) {
+        throw badRequest('Produto sem localizacao nao pode gerar OC nesta fase');
+      }
+
+      if (!productIdentity) {
+        throw badRequest('Produto sem identidade valida para gerar OC');
+      }
+
+      if (!locationIdentity) {
+        throw badRequest('Localizacao sem identidade valida para gerar OC');
+      }
+
+      const productKey = `${productIdentity.type}:${productIdentity.value}`;
+      const locationKey = `${locationIdentity.type}:${locationIdentity.value}`;
+
+      if (!grouped.has(productKey)) {
+        grouped.set(productKey, {
+          produtoExternoId: productIdentity.type === 'produto_externo_id' ? productIdentity.value : null,
+          codigo: cleanText(item.codigo),
+          codigoBarras: cleanText(item.codigo_barras),
+          descricaoSnapshot: produto,
+          saldoSistemaSnapshot: 0,
+          locations: [],
+          locationKeys: new Set()
+        });
+      }
+
+      const group = grouped.get(productKey);
+
+      if (group.locationKeys.has(locationKey)) {
+        throw conflict('Localizacao duplicada para o mesmo produto na OC');
+      }
+
+      group.saldoSistemaSnapshot += normalizeNumber(item.saldo_sistema);
+      group.locations.push({
+        localizacaoExternaId: locationIdentity.type === 'localizacao_externa_id'
+          ? locationIdentity.value
+          : null,
+        enderecoSnapshot: endereco,
+        codigoBarrasSnapshot: cleanText(item.codigo_barras),
+        validadeSnapshot: normalizeDateSnapshot(item.validade)
+      });
+      group.locationKeys.add(locationKey);
+    }
+
+    return Array.from(grouped.values()).map(({ locationKeys, ...group }) => group);
+  }
+
+  function mapCreateModelError(err) {
+    if (err?.code !== '23505') {
+      return err;
+    }
+
+    if (String(err.constraint || '').includes('oc_produtos')) {
+      return conflict('Produto duplicado na OC');
+    }
+
+    if (String(err.constraint || '').includes('oc_localizacoes')) {
+      return conflict('Localizacao duplicada para o mesmo produto na OC');
+    }
+
+    return conflict('Registro duplicado na criacao da OC');
   }
 
   async function createOcWithItems({ user, empresaId, payload, auditContext }) {
@@ -187,8 +398,10 @@ function createOcService({ repository, audit = noopAudit } = {}) {
       throw badRequest('Selecione ao menos um produto para gerar a OC');
     }
 
+    const groupedProducts = groupItemsByProduct(items);
+
     const oc = await repository.withTransaction(async (tx) => {
-      await assertEstoquistaExists(estoquista_id, tx);
+      await assertEstoquistaAvailableForFirstCount(estoquista_id, tx);
       await assertUserHasEmpresaAccess(estoquista_id, empresaId, tx);
 
       const { nextId, codigo } = await tx.getNextIdentity();
@@ -202,11 +415,50 @@ function createOcService({ repository, audit = noopAudit } = {}) {
         status: OC_STATUS.OPEN
       });
 
+      try {
+        for (const product of groupedProducts) {
+          const createdProduct = await tx.createOcProduto({
+            ocId: createdOc.id,
+            produtoExternoId: product.produtoExternoId,
+            codigo: product.codigo,
+            codigoBarras: product.codigoBarras,
+            descricaoSnapshot: product.descricaoSnapshot,
+            saldoSistemaSnapshot: product.saldoSistemaSnapshot,
+            status: ITEM_STATUS.PENDING
+          });
+
+          for (const location of product.locations) {
+            await tx.createOcLocalizacao({
+              ocProdutoId: createdProduct.id,
+              localizacaoExternaId: location.localizacaoExternaId,
+              enderecoSnapshot: location.enderecoSnapshot,
+              codigoBarrasSnapshot: location.codigoBarrasSnapshot,
+              validadeSnapshot: location.validadeSnapshot,
+              status: ITEM_STATUS.PENDING
+            });
+          }
+        }
+
+        await tx.createOcAssignment({
+          ocId: createdOc.id,
+          ciclo: 1,
+          fase: 'contagem',
+          estoquistaId: estoquista_id,
+          status: ASSIGNMENT_STATUS.ACTIVE
+        });
+      } catch (err) {
+        throw mapCreateModelError(err);
+      }
+
       for (const item of items) {
         await tx.createItem({
           ocId: createdOc.id,
           produto: item.produto,
           saldoSistema: item.saldo_sistema,
+          endereco: cleanText(item.endereco),
+          codigo: cleanText(item.codigo),
+          codigoBarras: cleanText(item.codigo_barras),
+          validade: normalizeDateSnapshot(item.validade),
           status: ITEM_STATUS.PENDING
         });
       }
@@ -224,12 +476,12 @@ function createOcService({ repository, audit = noopAudit } = {}) {
         empresa_id: empresaId,
         gestor_id: oc.gestor_id,
         estoquista_id: oc.estoquista_id,
-        item_count: items.length
+        item_count: groupedProducts.length
       },
       auditContext
     });
 
-    return { ...oc, qtd: items.length };
+    return { ...oc, qtd: groupedProducts.length };
   }
 
   function listOcsByGestorInternal({ gestorId, empresaId }) {
@@ -330,6 +582,7 @@ function createOcService({ repository, audit = noopAudit } = {}) {
       assertOcEmpresa(foundOc, empresaId);
       assertGestorOwnership(user, foundOc);
       ensureOcWaitingApproval(foundOc);
+      await ensureOcCompleteForApproval(ocId, tx);
 
       await tx.approveItems({
         ocId,
@@ -374,7 +627,7 @@ function createOcService({ repository, audit = noopAudit } = {}) {
       assertGestorOwnership(user, foundOc);
       ensureOcWaitingApproval(foundOc);
 
-      await assertEstoquistaExists(normalizedNovoEstoquistaId, tx);
+      await assertEstoquistaAvailableForAssignment(normalizedNovoEstoquistaId, tx);
       await assertUserHasEmpresaAccess(normalizedNovoEstoquistaId, empresaId, tx);
 
       if (Number(foundOc.estoquista_id) === normalizedNovoEstoquistaId) {
@@ -440,11 +693,19 @@ function createOcService({ repository, audit = noopAudit } = {}) {
     assertOcEmpresa(oc, empresaId);
     assertOcVisibleToUser(user, oc);
 
-    return repository.listItems(ocId);
+    const items = await repository.listItems(ocId);
+
+    if (isEstoquista(user)) {
+      return items.map(toEstoquistaItemDto);
+    }
+
+    return items;
   }
 
   async function saveOcCount({ user, empresaId, payload, auditContext }) {
     const { oc_id, item_id, quantidade, lote } = payload;
+    assertValidCountQuantity(quantidade);
+
     const userId = Number(user.id);
     const { item, count } = await repository.withTransaction(async (tx) => {
       const oc = await getOcOrFail(oc_id, tx, { forUpdate: true });

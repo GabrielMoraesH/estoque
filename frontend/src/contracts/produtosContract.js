@@ -1,5 +1,7 @@
 export const PRODUTO_LOCALIZACAO_FIELDS = Object.freeze([
   "id",
+  "produto_externo_id",
+  "localizacao_externa_id",
   "produto",
   "saldo_sistema",
   "endereco",
@@ -52,6 +54,14 @@ export function normalizeProduto(rawProduto, index = 0) {
 
   return {
     id: firstValue(produto.id, produto.codigo_barras, produto.codigo, index + 1),
+    produto_externo_id: firstValue(produto.produto_externo_id, produto.produtoId, produto.produto_id, ""),
+    localizacao_externa_id: firstValue(
+      produto.localizacao_externa_id,
+      produto.localizacaoId,
+      produto.localizacao_id,
+      produto.id,
+      ""
+    ),
     produto: resolveProdutoNome(produto),
     saldo_sistema: parseNumber(
       firstValue(produto.saldo_sistema, produto.saldoSistema, produto.saldo)
@@ -86,8 +96,10 @@ export function buildOcItemPayloadFromProduto(produto) {
   const normalizedProduto = normalizeProduto(produto);
 
   return {
+    produto_externo_id: normalizedProduto.produto_externo_id,
     produto: normalizedProduto.produto,
     saldo_sistema: normalizedProduto.saldo_sistema,
+    localizacao_externa_id: normalizedProduto.localizacao_externa_id,
     endereco: normalizedProduto.endereco,
     codigo: normalizedProduto.codigo,
     codigo_barras: normalizedProduto.codigo_barras,
