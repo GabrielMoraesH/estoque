@@ -1,0 +1,57 @@
+.user-box {
+  margin-top: 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.user-avatar {
+  background-color: #1e293b;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.user-details {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.user-name {
+  font-weight: bold;
+  line-height: 1.2;
+}
+
+.user-role {
+  font-size: 12px;
+  color: #94a3b8;
+  text-transform: capitalize;
+}
+
+@media (max-width: 768px) {
+  .user-box {
+    padding: 12px 0 0;
+  }
+
+  .user-avatar {
+    width: 44px;
+    height: 44px;
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  .user-name {
+    font-size: 15px;
+  }
+
+  .user-role {
+    font-size: 13px;
+  }
+}

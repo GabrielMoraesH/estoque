@@ -1,0 +1,91 @@
+.counting-card {
+  max-width: 620px;
+  border-color: #c3d2eb;
+}
+
+.counting-meta {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 22px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid #e5ebf3;
+}
+
+.counting-badge {
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: #eef4ff;
+  color: #223c79;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.counting-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.counting-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 8px;
+}
+
+@media (max-width: 768px) {
+  .counting-card {
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: hidden;
+  }
+
+  .counting-meta {
+    gap: 7px;
+    margin-bottom: 14px;
+    padding-bottom: 12px;
+  }
+
+  .counting-badge {
+    font-size: 12px;
+    padding: 7px 10px;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
+  .counting-form {
+    gap: 14px;
+  }
+
+  .counting-form .field-group {
+    gap: 6px;
+  }
+
+  .counting-form .field-control {
+    height: 48px;
+    font-size: 16px;
+    padding: 0 15px;
+  }
+
+  .counting-actions {
+    justify-content: stretch;
+    padding-top: 0;
+  }
+
+  .counting-actions .primary-button {
+    min-height: 48px;
+    font-size: 15px;
+  }
+}
+
+@media (max-width: 480px) {
+  .counting-meta {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .counting-badge {
+    width: fit-content;
+  }
+}

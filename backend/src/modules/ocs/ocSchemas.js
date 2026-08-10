@@ -1,0 +1,85 @@
+const { z, emptyObjectSchema, idParamSchema } = require('../shared/commonSchemas');
+
+const ocItemInputSchema = z.object({
+  produto: z.string().trim().min(1),
+  saldo_sistema: z.coerce.number(),
+  endereco: z.string().optional(),
+  codigo: z.string().optional(),
+  codigo_barras: z.string().optional(),
+  validade: z.string().optional()
+});
+
+const createOcWithItemsBodySchema = z.object({
+  estoquista_id: z.coerce.number().int().positive(),
+  items: z.array(ocItemInputSchema).min(1)
+});
+
+const recountBodySchema = z.object({
+  itemIds: z.array(z.coerce.number().int().positive()).min(1),
+  novo_estoquista_id: z.coerce.number().int().positive()
+});
+
+const saveCountBodySchema = z.object({
+  oc_id: z.coerce.number().int().positive(),
+  item_id: z.coerce.number().int().positive(),
+  quantidade: z.coerce.number(),
+  lote: z.string().trim().min(1)
+});
+
+module.exports = {
+  createOcWithItemsSchema: {
+    body: createOcWithItemsBodySchema,
+    params: emptyObjectSchema,
+    query: emptyObjectSchema
+  },
+  myGestorOcListSchema: {
+    params: emptyObjectSchema,
+    query: emptyObjectSchema
+  },
+  gestorOcListSchema: {
+    params: idParamSchema,
+    query: emptyObjectSchema
+  },
+  myEstoquistaOcListSchema: {
+    params: emptyObjectSchema,
+    query: emptyObjectSchema
+  },
+  estoquistaOcListSchema: {
+    params: idParamSchema,
+    query: emptyObjectSchema
+  },
+  approvalAdminListSchema: {
+    params: emptyObjectSchema,
+    query: emptyObjectSchema
+  },
+  myApprovalListSchema: {
+    params: emptyObjectSchema,
+    query: emptyObjectSchema
+  },
+  approvalGestorListSchema: {
+    params: idParamSchema,
+    query: emptyObjectSchema
+  },
+  approveOcSchema: {
+    params: idParamSchema,
+    query: emptyObjectSchema
+  },
+  recountOcSchema: {
+    body: recountBodySchema,
+    params: idParamSchema,
+    query: emptyObjectSchema
+  },
+  listItemsSchema: {
+    params: idParamSchema,
+    query: emptyObjectSchema
+  },
+  saveCountSchema: {
+    body: saveCountBodySchema,
+    params: emptyObjectSchema,
+    query: emptyObjectSchema
+  },
+  finalizeOcSchema: {
+    params: idParamSchema,
+    query: emptyObjectSchema
+  }
+};
