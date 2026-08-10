@@ -46,11 +46,22 @@ function ContarItem() {
     setSaving(true);
 
     try {
+      const newModelLocationId = location.state?.ocLocalizacaoId || itemId;
+      const countPayload = location.state?.newModel
+        ? {
+            oc_id: ocId,
+            oc_localizacao_id: newModelLocationId,
+            quantidade,
+            lote
+          }
+        : {
+            oc_id: ocId,
+            item_id: itemId,
+            quantidade,
+            lote
+          };
       const response = await saveItemCount({
-        oc_id: ocId,
-        item_id: itemId,
-        quantidade,
-        lote
+        ...countPayload
       });
 
       if (response?.id) {
@@ -76,6 +87,8 @@ function ContarItem() {
   }, [
     canCountOc,
     itemId,
+    location.state?.newModel,
+    location.state?.ocLocalizacaoId,
     location.state?.from,
     location.state?.selectedProduct,
     navigate,

@@ -216,14 +216,26 @@ function createOcRepository(db = pool) {
     async listByEstoquista({ estoquistaId, empresaId, itemStatus, ocStatus }) {
       const result = await db.query(
         `SELECT ocs.*,
-                COUNT(oc_items.id) FILTER (WHERE oc_items.status <> $2)::int AS qtd,
-                COUNT(oc_items.id) FILTER (WHERE oc_items.status = $3)::int AS qtd_contados,
+                CASE
+                  WHEN COUNT(DISTINCT oc_localizacoes.id) > 0 THEN COUNT(DISTINCT oc_localizacoes.id)
+                  ELSE COUNT(oc_items.id) FILTER (WHERE oc_items.status <> $2)
+                END::int AS qtd,
+                CASE
+                  WHEN COUNT(DISTINCT oc_localizacoes.id) > 0 THEN COUNT(DISTINCT oc_localizacoes.id) FILTER (WHERE oc_localizacoes.status = $3)
+                  ELSE COUNT(oc_items.id) FILTER (WHERE oc_items.status = $3)
+                END::int AS qtd_contados,
                 empresas.codigo AS empresa_codigo,
                 empresas.nome AS empresa_nome
          FROM ocs
          LEFT JOIN oc_items ON oc_items.oc_id = ocs.id
+         LEFT JOIN oc_assignments ON oc_assignments.oc_id = ocs.id
+          AND oc_assignments.fase = 'contagem'
+          AND oc_assignments.ciclo = 1
+          AND oc_assignments.status = 'ativo'
+         LEFT JOIN oc_produtos ON oc_produtos.oc_id = ocs.id
+         LEFT JOIN oc_localizacoes ON oc_localizacoes.oc_produto_id = oc_produtos.id
          LEFT JOIN empresas ON empresas.id = ocs.empresa_id
-         WHERE ocs.estoquista_id = $1
+         WHERE COALESCE(oc_assignments.estoquista_id, ocs.estoquista_id) = $1
            AND ocs.empresa_id = $4
            AND COALESCE(ocs.status, $5) NOT IN ($6, $7)
          GROUP BY ocs.id, empresas.codigo, empresas.nome
@@ -409,6 +421,247 @@ function createOcRepository(db = pool) {
          WHERE id = $1
          ${forUpdate ? 'FOR UPDATE' : ''}`,
         [itemId]
+      );
+
+      return result.rows[0] || null;
+    },
+
+    async ocHasNewModel(ocId) {
+      const result = await db.query(
+        `SELECT EXISTS (
+           SELECT 1
+           FROM oc_produtos
+           WHERE oc_id = $1
+         ) AS has_new_model`,
+        [ocId]
+      );
+
+      return Boolean(result.rows[0]?.has_new_model);
+    },
+
+    async listOperationalProducts({ ocId, assignmentId }) {
+      const result = await db.query(
+        `SELECT oc_produtos.id,
+                oc_produtos.descricao_snapshot AS descricao,
+                oc_produtos.status,
+                COUNT(oc_localizacoes.id)::int AS total_localizacoes,
+                COUNT(oc_localizacoes.id) FILTER (WHERE oc_localizacoes.status = 'contado')::int AS localizacoes_contadas
+         FROM oc_produtos
+         INNER JOIN oc_localizacoes ON oc_localizacoes.oc_produto_id = oc_produtos.id
+         WHERE oc_produtos.oc_id = $1
+           AND EXISTS (
+             SELECT 1
+             FROM oc_assignments
+             WHERE oc_assignments.id = $2
+               AND oc_assignments.oc_id = oc_produtos.oc_id
+           )
+         GROUP BY oc_produtos.id
+         ORDER BY oc_produtos.id ASC`,
+        [ocId, assignmentId]
+      );
+
+      return result.rows;
+    },
+
+    async listOperationalLocationsByProduct({ ocProdutoId, assignmentId }) {
+      const result = await db.query(
+        `SELECT oc_localizacoes.id,
+                oc_localizacoes.oc_produto_id,
+                oc_localizacoes.endereco_snapshot AS endereco,
+                oc_localizacoes.status,
+                own_count.quantidade,
+                own_count.lote
+         FROM oc_localizacoes
+         INNER JOIN oc_produtos ON oc_produtos.id = oc_localizacoes.oc_produto_id
+         LEFT JOIN LATERAL (
+           SELECT contagens.quantidade, contagens.lote
+           FROM contagens
+           WHERE contagens.assignment_id = $2
+             AND contagens.oc_localizacao_id = oc_localizacoes.id
+           ORDER BY contagens.created_at DESC, contagens.id DESC
+           LIMIT 1
+         ) own_count ON true
+         WHERE oc_localizacoes.oc_produto_id = $1
+           AND EXISTS (
+             SELECT 1
+             FROM oc_assignments
+             WHERE oc_assignments.id = $2
+               AND oc_assignments.oc_id = oc_produtos.oc_id
+           )
+         ORDER BY oc_localizacoes.id ASC`,
+        [ocProdutoId, assignmentId]
+      );
+
+      return result.rows;
+    },
+
+    async findLocalizacaoContextById(ocLocalizacaoId, { forUpdate = false } = {}) {
+      const result = await db.query(
+        `SELECT oc_localizacoes.id,
+                oc_localizacoes.oc_produto_id,
+                oc_localizacoes.endereco_snapshot,
+                oc_localizacoes.status,
+                oc_produtos.oc_id,
+                oc_produtos.codigo,
+                oc_produtos.descricao_snapshot,
+                ocs.gestor_id,
+                ocs.estoquista_id,
+                ocs.empresa_id,
+                ocs.status AS oc_status
+         FROM oc_localizacoes
+         INNER JOIN oc_produtos ON oc_produtos.id = oc_localizacoes.oc_produto_id
+         INNER JOIN ocs ON ocs.id = oc_produtos.oc_id
+         WHERE oc_localizacoes.id = $1
+         ${forUpdate ? 'FOR UPDATE OF oc_localizacoes, oc_produtos, ocs' : ''}`,
+        [ocLocalizacaoId]
+      );
+
+      return result.rows[0] || null;
+    },
+
+    async findActiveFirstCountAssignment({ ocId, estoquistaId }, { forUpdate = false } = {}) {
+      const result = await db.query(
+        `SELECT *
+         FROM oc_assignments
+         WHERE oc_id = $1
+           AND estoquista_id = $2
+           AND fase = 'contagem'
+           AND ciclo = 1
+           AND status = 'ativo'
+         ORDER BY id ASC
+         LIMIT 1
+         ${forUpdate ? 'FOR UPDATE' : ''}`,
+        [ocId, estoquistaId]
+      );
+
+      return result.rows[0] || null;
+    },
+
+    async findCountByAssignmentAndLocation({ assignmentId, ocLocalizacaoId }) {
+      const result = await db.query(
+        `SELECT *
+         FROM contagens
+         WHERE assignment_id = $1
+           AND oc_localizacao_id = $2
+         LIMIT 1`,
+        [assignmentId, ocLocalizacaoId]
+      );
+
+      return result.rows[0] || null;
+    },
+
+    async findLegacyItemForLocalizacao({ ocId, codigo, descricao, endereco }) {
+      const result = await db.query(
+        `SELECT *
+         FROM oc_items
+         WHERE oc_id = $1
+           AND endereco = $2
+           AND (
+             ($3::text IS NOT NULL AND codigo = $3)
+             OR ($3::text IS NULL AND produto = $4)
+           )
+         ORDER BY id ASC`,
+        [ocId, endereco, codigo || null, descricao]
+      );
+
+      return result.rows.length === 1 ? result.rows[0] : null;
+    },
+
+    async createNewModelCount({
+      ocId,
+      ocProdutoId,
+      ocLocalizacaoId,
+      assignmentId,
+      legacyItemId,
+      quantidade,
+      lote,
+      userId
+    }) {
+      const result = await db.query(
+        `INSERT INTO contagens (
+           oc_id,
+           item_id,
+           oc_produto_id,
+           oc_localizacao_id,
+           assignment_id,
+           quantidade,
+           lote,
+           user_id
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         RETURNING *`,
+        [
+          ocId,
+          legacyItemId || null,
+          ocProdutoId,
+          ocLocalizacaoId,
+          assignmentId,
+          quantidade,
+          lote,
+          userId
+        ]
+      );
+
+      return result.rows[0];
+    },
+
+    async updateLocalizacaoStatus({ ocLocalizacaoId, status }) {
+      await db.query(
+        `UPDATE oc_localizacoes
+         SET status = $1
+         WHERE id = $2`,
+        [status, ocLocalizacaoId]
+      );
+    },
+
+    async updateProdutoStatusFromLocalizacoes({ ocProdutoId, pendingStatus, countedStatus }) {
+      const result = await db.query(
+        `UPDATE oc_produtos
+         SET status = CASE
+           WHEN EXISTS (
+             SELECT 1
+             FROM oc_localizacoes
+             WHERE oc_localizacoes.oc_produto_id = oc_produtos.id
+               AND oc_localizacoes.status = $2
+           ) THEN $2
+           ELSE $3
+         END
+         WHERE id = $1
+         RETURNING *`,
+        [ocProdutoId, pendingStatus, countedStatus]
+      );
+
+      return result.rows[0] || null;
+    },
+
+    async getNewModelFinalizeValidation({ ocId, assignmentId }) {
+      const result = await db.query(
+        `SELECT EXISTS(SELECT 1 FROM ocs WHERE id = $1) AS oc_existe,
+                COUNT(oc_localizacoes.id)::int AS qtd_ativos,
+                COUNT(oc_localizacoes.id) FILTER (WHERE oc_localizacoes.status = 'contado')::int AS qtd_contados
+         FROM oc_produtos
+         INNER JOIN oc_localizacoes ON oc_localizacoes.oc_produto_id = oc_produtos.id
+         WHERE oc_produtos.oc_id = $1
+           AND EXISTS (
+             SELECT 1
+             FROM oc_assignments
+             WHERE oc_assignments.id = $2
+               AND oc_assignments.oc_id = oc_produtos.oc_id
+           )`,
+        [ocId, assignmentId]
+      );
+
+      return result.rows[0];
+    },
+
+    async finalizeAssignment({ assignmentId }) {
+      const result = await db.query(
+        `UPDATE oc_assignments
+         SET status = 'finalizado',
+             finalizado_em = NOW()
+         WHERE id = $1
+         RETURNING *`,
+        [assignmentId]
       );
 
       return result.rows[0] || null;

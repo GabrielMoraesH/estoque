@@ -27,6 +27,18 @@ function createRepositoryMock(overrides = {}) {
     approveItemsExcept: jest.fn(),
     listItems: jest.fn(),
     findItemById: jest.fn(),
+    ocHasNewModel: jest.fn().mockResolvedValue(false),
+    listOperationalProducts: jest.fn(),
+    listOperationalLocationsByProduct: jest.fn(),
+    findLocalizacaoContextById: jest.fn().mockResolvedValue(null),
+    findActiveFirstCountAssignment: jest.fn(),
+    findCountByAssignmentAndLocation: jest.fn(),
+    findLegacyItemForLocalizacao: jest.fn(),
+    createNewModelCount: jest.fn(),
+    updateLocalizacaoStatus: jest.fn(),
+    updateProdutoStatusFromLocalizacoes: jest.fn(),
+    getNewModelFinalizeValidation: jest.fn(),
+    finalizeAssignment: jest.fn(),
     createCount: jest.fn(),
     updateItemCount: jest.fn(),
     getFinalizeValidation: jest.fn()
@@ -1326,6 +1338,315 @@ describe('OcService unitario com repository mockado', () => {
       ocId: 55
     })).rejects.toBe(unexpectedError);
     expect(audit.logAction).not.toHaveBeenCalled();
+  });
+
+  async function createNewModelOcForCount({ estoquistaId = 22, userOverrides = {}, items } = {}) {
+    const repository = createInMemoryOcRepository({
+      users: [
+        { id: 11, nome: 'Gestor', role: 'gestor', empresas: [{ id: 1 }] },
+        {
+          id: estoquistaId,
+          nome: 'Estoquista',
+          role: 'estoquista',
+          nivel_estoquista: 1,
+          ativo: true,
+          empresas: [{ id: 1 }],
+          ...userOverrides
+        }
+      ]
+    });
+    const { service } = createService({ repository });
+    const oc = await service.createOcWithItems({
+      user: gestor,
+      empresaId: 1,
+      payload: {
+        estoquista_id: estoquistaId,
+        items: items || [
+          { produto: 'Dipirona 500mg', codigo: 'DIP', endereco: 'A1-01-01', saldo_sistema: 10 },
+          { produto: 'Dipirona 500mg', codigo: 'DIP', endereco: 'A1-01-02', saldo_sistema: 20 }
+        ]
+      }
+    });
+
+    return { repository, service, oc };
+  }
+
+  it('conta localizacao no novo modelo com assignment e faz dual-write conservador', async () => {
+    const { repository, service, oc } = await createNewModelOcForCount();
+    const locationId = repository.__getState().ocLocalizacoes[0].id;
+
+    const count = await service.saveOcCount({
+      user: estoquista,
+      empresaId: 1,
+      payload: {
+        oc_id: oc.id,
+        oc_localizacao_id: locationId,
+        quantidade: 0,
+        lote: 'L1'
+      }
+    });
+    const state = repository.__getState();
+
+    expect(count).toMatchObject({
+      oc_id: oc.id,
+      oc_produto_id: state.ocProdutos[0].id,
+      oc_localizacao_id: locationId,
+      assignment_id: state.ocAssignments[0].id,
+      user_id: 22,
+      quantidade: 0,
+      lote: 'L1'
+    });
+    expect(state.counts).toHaveLength(1);
+    expect(state.ocLocalizacoes[0].status).toBe(ITEM_STATUS.COUNTED);
+    expect(state.ocProdutos[0].status).toBe(ITEM_STATUS.PENDING);
+    expect(state.items[0]).toMatchObject({
+      saldo_contado: 0,
+      lote: 'L1',
+      status: ITEM_STATUS.COUNTED
+    });
+  });
+
+  it('consolida produto como contado somente quando todas as localizacoes forem contadas', async () => {
+    const { repository, service, oc } = await createNewModelOcForCount();
+    const [first, second] = repository.__getState().ocLocalizacoes;
+
+    await service.saveOcCount({
+      user: estoquista,
+      empresaId: 1,
+      payload: { oc_id: oc.id, oc_localizacao_id: first.id, quantidade: 1, lote: 'L1' }
+    });
+    expect(repository.__getState().ocProdutos[0].status).toBe(ITEM_STATUS.PENDING);
+
+    await service.saveOcCount({
+      user: estoquista,
+      empresaId: 1,
+      payload: { oc_id: oc.id, oc_localizacao_id: second.id, quantidade: 2, lote: 'L2' }
+    });
+    expect(repository.__getState().ocProdutos[0].status).toBe(ITEM_STATUS.COUNTED);
+  });
+
+  it('faz rollback da contagem nova se o dual-write legado falhar', async () => {
+    const repository = createInMemoryOcRepository({
+      users: [
+        { id: 11, nome: 'Gestor', role: 'gestor', empresas: [{ id: 1 }] },
+        { id: 22, nome: 'Estoquista', role: 'estoquista', nivel_estoquista: 1, ativo: true, empresas: [{ id: 1 }] }
+      ],
+      failOnUpdateItemCount: true
+    });
+    const { service } = createService({ repository });
+    const oc = await service.createOcWithItems({
+      user: gestor,
+      empresaId: 1,
+      payload: {
+        estoquista_id: 22,
+        items: [{ produto: 'Dipirona', codigo: 'DIP', endereco: 'A1-01-01', saldo_sistema: 10 }]
+      }
+    });
+    const locationId = repository.__getState().ocLocalizacoes[0].id;
+
+    await expect(service.saveOcCount({
+      user: estoquista,
+      empresaId: 1,
+      payload: { oc_id: oc.id, oc_localizacao_id: locationId, quantidade: 1, lote: 'L1' }
+    })).rejects.toThrow('item count update failed');
+
+    const state = repository.__getState();
+    expect(state.counts).toHaveLength(0);
+    expect(state.ocLocalizacoes[0].status).toBe(ITEM_STATUS.PENDING);
+    expect(state.ocProdutos[0].status).toBe(ITEM_STATUS.PENDING);
+    expect(state.items[0]).toMatchObject({
+      saldo_contado: null,
+      lote: null,
+      status: ITEM_STATUS.PENDING
+    });
+  });
+
+  it('rejeita duplicidade e double-submit sem criar segundo evento', async () => {
+    const { repository, service, oc } = await createNewModelOcForCount();
+    const locationId = repository.__getState().ocLocalizacoes[0].id;
+    const payload = { oc_id: oc.id, oc_localizacao_id: locationId, quantidade: 1, lote: 'L1' };
+
+    await service.saveOcCount({ user: estoquista, empresaId: 1, payload });
+    await expect(service.saveOcCount({ user: estoquista, empresaId: 1, payload })).rejects.toMatchObject({
+      message: 'Localizacao ja foi contada neste assignment',
+      statusCode: 409,
+      errorCode: ERROR_CODES.CONFLICT
+    });
+    expect(repository.__getState().counts).toHaveLength(1);
+  });
+
+  it('bloqueia novo fluxo para estoquista diferente, nivel 2, empresa errada e lote vazio', async () => {
+    const { repository, service, oc } = await createNewModelOcForCount();
+    const locationId = repository.__getState().ocLocalizacoes[0].id;
+    const basePayload = { oc_id: oc.id, oc_localizacao_id: locationId, quantidade: 1, lote: 'L1' };
+
+    await expect(service.saveOcCount({
+      user: { id: 99, role: 'estoquista' },
+      empresaId: 1,
+      payload: basePayload
+    })).rejects.toMatchObject({ statusCode: 404 });
+
+    const level2Repository = createInMemoryOcRepository({
+      users: [
+        { id: 33, nome: 'Nivel 2', role: 'estoquista', nivel_estoquista: 2, ativo: true, empresas: [{ id: 1 }] }
+      ],
+      ocs: [{ id: 70, gestor_id: 11, estoquista_id: 33, empresa_id: 1, status: OC_STATUS.OPEN }],
+      ocProdutos: [{
+        id: 80,
+        oc_id: 70,
+        codigo: 'DIP',
+        descricao_snapshot: 'Dipirona',
+        status: ITEM_STATUS.PENDING
+      }],
+      ocLocalizacoes: [{
+        id: 90,
+        oc_produto_id: 80,
+        endereco_snapshot: 'A1',
+        status: ITEM_STATUS.PENDING
+      }],
+      ocAssignments: [{
+        id: 100,
+        oc_id: 70,
+        ciclo: 1,
+        fase: 'contagem',
+        estoquista_id: 33,
+        status: 'ativo'
+      }]
+    });
+    const { service: level2Service } = createService({ repository: level2Repository });
+    await expect(level2Service.saveOcCount({
+      user: { id: 33, role: 'estoquista' },
+      empresaId: 1,
+      payload: {
+        oc_id: 70,
+        oc_localizacao_id: 90,
+        quantidade: 1,
+        lote: 'L1'
+      }
+    })).rejects.toMatchObject({ statusCode: 403 });
+
+    await expect(service.saveOcCount({
+      user: estoquista,
+      empresaId: 2,
+      payload: basePayload
+    })).rejects.toMatchObject({ statusCode: 403 });
+
+    await expect(service.saveOcCount({
+      user: estoquista,
+      empresaId: 1,
+      payload: { ...basePayload, lote: '   ' }
+    })).rejects.toMatchObject({
+      message: 'Lote e obrigatorio',
+      statusCode: 400
+    });
+  });
+
+  it.each([
+    ['negativa', -1],
+    ['decimal', 1.5]
+  ])('rejeita quantidade %s no novo fluxo', async (description, quantidade) => {
+    const { repository, service, oc } = await createNewModelOcForCount();
+
+    await expect(service.saveOcCount({
+      user: estoquista,
+      empresaId: 1,
+      payload: {
+        oc_id: oc.id,
+        oc_localizacao_id: repository.__getState().ocLocalizacoes[0].id,
+        quantidade,
+        lote: 'L1'
+      }
+    })).rejects.toMatchObject({
+      message: 'Quantidade deve ser um numero inteiro maior ou igual a zero',
+      statusCode: 400
+    });
+  });
+
+  it('lista operacao nova sem saldo e preserva snapshot/retomada', async () => {
+    const { repository, service, oc } = await createNewModelOcForCount();
+    const locationId = repository.__getState().ocLocalizacoes[0].id;
+
+    await service.saveOcCount({
+      user: estoquista,
+      empresaId: 1,
+      payload: { oc_id: oc.id, oc_localizacao_id: locationId, quantidade: 7, lote: 'RET' }
+    });
+    repository.__getState().items[0].endereco = 'NAO_DEVE_APARECER';
+
+    const items = await service.listOcItems({ user: estoquista, empresaId: 1, ocId: oc.id });
+    const counted = items.find((item) => Number(item.oc_localizacao_id) === Number(locationId));
+
+    expect(counted).toMatchObject({
+      endereco: 'A1-01-01',
+      status: ITEM_STATUS.COUNTED,
+      quantidade: 7,
+      lote: 'RET',
+      new_model: true
+    });
+    expect(JSON.stringify(items)).not.toContain('saldo_sistema');
+    expect(JSON.stringify(items)).not.toContain('diferenca');
+    expect(JSON.stringify(items)).not.toContain('saldo_sistema_snapshot');
+  });
+
+  it('finaliza OC nova somente depois de todas as localizacoes contadas e finaliza assignment', async () => {
+    const { repository, service, oc } = await createNewModelOcForCount();
+    const [first, second] = repository.__getState().ocLocalizacoes;
+
+    await service.saveOcCount({
+      user: estoquista,
+      empresaId: 1,
+      payload: { oc_id: oc.id, oc_localizacao_id: first.id, quantidade: 1, lote: 'L1' }
+    });
+    await expect(service.finalizeOc({ user: estoquista, empresaId: 1, ocId: oc.id })).rejects.toMatchObject({
+      message: 'Conclua a contagem das localizacoes pendentes',
+      statusCode: 400
+    });
+
+    await service.saveOcCount({
+      user: estoquista,
+      empresaId: 1,
+      payload: { oc_id: oc.id, oc_localizacao_id: second.id, quantidade: 2, lote: 'L2' }
+    });
+    await expect(service.finalizeOc({ user: estoquista, empresaId: 1, ocId: oc.id })).resolves.toMatchObject({
+      message: 'OC enviada para aprovacao',
+      oc: expect.objectContaining({ status: OC_STATUS.WAITING_APPROVAL })
+    });
+
+    const state = repository.__getState();
+    expect(state.ocAssignments[0]).toMatchObject({ status: 'finalizado' });
+    expect(state.ocAssignments[0].finalizado_em).toBeTruthy();
+    expect(state.ocs[0].status).toBe(OC_STATUS.WAITING_APPROVAL);
+  });
+
+  it('bloqueia nova contagem e nova finalizacao depois que o assignment foi finalizado', async () => {
+    const { repository, service, oc } = await createNewModelOcForCount();
+    const [first, second] = repository.__getState().ocLocalizacoes;
+
+    await service.saveOcCount({
+      user: estoquista,
+      empresaId: 1,
+      payload: { oc_id: oc.id, oc_localizacao_id: first.id, quantidade: 1, lote: 'L1' }
+    });
+    await service.saveOcCount({
+      user: estoquista,
+      empresaId: 1,
+      payload: { oc_id: oc.id, oc_localizacao_id: second.id, quantidade: 2, lote: 'L2' }
+    });
+    await service.finalizeOc({ user: estoquista, empresaId: 1, ocId: oc.id });
+
+    await expect(service.finalizeOc({ user: estoquista, empresaId: 1, ocId: oc.id })).rejects.toMatchObject({
+      message: 'OC nao esta aberta',
+      statusCode: 400
+    });
+    await expect(service.saveOcCount({
+      user: estoquista,
+      empresaId: 1,
+      payload: { oc_id: oc.id, oc_localizacao_id: second.id, quantidade: 3, lote: 'L3' }
+    })).rejects.toMatchObject({
+      message: 'OC nao esta aberta',
+      statusCode: 400
+    });
+    expect(repository.__getState().counts).toHaveLength(2);
   });
 
   it('falha cedo quando repository nao implementa IOcRepository', () => {

@@ -23,9 +23,13 @@ const recountBodySchema = z.object({
 
 const saveCountBodySchema = z.object({
   oc_id: z.coerce.number().int().positive(),
-  item_id: z.coerce.number().int().positive(),
+  item_id: z.coerce.number().int().positive().optional(),
+  oc_localizacao_id: z.coerce.number().int().positive().optional(),
   quantidade: z.coerce.number().int().min(0),
   lote: z.string().trim().min(1)
+}).refine((data) => data.item_id || data.oc_localizacao_id, {
+  message: 'Informe item_id ou oc_localizacao_id',
+  path: ['oc_localizacao_id']
 });
 
 module.exports = {

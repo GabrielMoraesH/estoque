@@ -14,7 +14,8 @@ const noopAudit = {
 };
 
 const ASSIGNMENT_STATUS = {
-  ACTIVE: 'ativo'
+  ACTIVE: 'ativo',
+  FINALIZED: 'finalizado'
 };
 
 function badRequest(message) {
@@ -65,9 +66,26 @@ function createOcService({ repository, audit = noopAudit } = {}) {
     return safeItem;
   }
 
+  function toEstoquistaProductDto(product) {
+    const {
+      saldo_sistema_snapshot,
+      saldo_sistema,
+      diferenca,
+      ...safeProduct
+    } = product;
+
+    return safeProduct;
+  }
+
   function assertValidCountQuantity(quantidade) {
     if (!Number.isInteger(quantidade) || quantidade < 0) {
       throw badRequest('Quantidade deve ser um numero inteiro maior ou igual a zero');
+    }
+  }
+
+  function assertValidLote(lote) {
+    if (!cleanText(lote)) {
+      throw badRequest('Lote e obrigatorio');
     }
   }
 
@@ -175,6 +193,26 @@ function createOcService({ repository, audit = noopAudit } = {}) {
     }
   }
 
+  async function assertEstoquistaEligibleForFirstCount(user, empresaId, repo = repository) {
+    if (!isEstoquista(user)) {
+      throw forbidden('Voce nao tem permissao para operar esta OC');
+    }
+
+    const currentUser = await getUserOrFail(user.id, repo);
+
+    if (currentUser.role !== 'estoquista' || currentUser.ativo === false) {
+      throw forbidden('Voce nao tem permissao para operar esta OC');
+    }
+
+    if (Number(currentUser.nivel_estoquista) !== 1) {
+      throw forbidden('A primeira contagem deve ser executada por um estoquista nivel 1');
+    }
+
+    await assertUserHasEmpresaAccess(user.id, empresaId, repo);
+
+    return currentUser;
+  }
+
   function assertOcVisibleToUser(user, oc) {
     if (isAdmin(user)) {
       return;
@@ -238,6 +276,12 @@ function createOcService({ repository, audit = noopAudit } = {}) {
   function ensureItemAvailableForCount(item) {
     if (!assertItemStatus(item, [ITEM_STATUS.PENDING, ITEM_STATUS.COUNTED, ITEM_STATUS.RECOUNT])) {
       throw badRequest('Item nao esta disponivel para contagem');
+    }
+  }
+
+  function ensureLocalizacaoAvailableForFirstCount(localizacao) {
+    if (!assertItemStatus(localizacao, [ITEM_STATUS.PENDING])) {
+      throw badRequest('Localizacao nao esta disponivel para primeira contagem');
     }
   }
 
@@ -691,6 +735,48 @@ function createOcService({ repository, audit = noopAudit } = {}) {
   async function listOcItems({ user, empresaId, ocId }) {
     const oc = await getOcOrFail(ocId);
     assertOcEmpresa(oc, empresaId);
+
+    if (isEstoquista(user) && await repository.ocHasNewModel(ocId)) {
+      const assignment = await repository.findActiveFirstCountAssignment({ ocId, estoquistaId: user.id });
+
+      if (!assignment) {
+        throw forbidden('Voce nao tem permissao para acessar esta OC');
+      }
+
+      const assignmentId = assignment.id;
+      const products = await repository.listOperationalProducts({ ocId, assignmentId });
+      const items = [];
+
+      for (const product of products) {
+        const locations = await repository.listOperationalLocationsByProduct({
+          ocProdutoId: product.id,
+          assignmentId
+        });
+
+        for (const location of locations) {
+          items.push(toEstoquistaProductDto({
+            id: location.id,
+            oc_id: Number(ocId),
+            oc_produto_id: product.id,
+            oc_localizacao_id: location.id,
+            produto: product.descricao,
+            descricao: product.descricao,
+            endereco: location.endereco,
+            location: { endereco: location.endereco },
+            status: location.status,
+            saldo_contado: location.quantidade ?? null,
+            quantidade: location.quantidade ?? null,
+            lote: location.lote ?? null,
+            total_localizacoes: product.total_localizacoes,
+            localizacoes_contadas: product.localizacoes_contadas,
+            new_model: true
+          }));
+        }
+      }
+
+      return items;
+    }
+
     assertOcVisibleToUser(user, oc);
 
     const items = await repository.listItems(ocId);
@@ -703,8 +789,29 @@ function createOcService({ repository, audit = noopAudit } = {}) {
   }
 
   async function saveOcCount({ user, empresaId, payload, auditContext }) {
-    const { oc_id, item_id, quantidade, lote } = payload;
+    const { oc_id, item_id, oc_localizacao_id, quantidade, lote } = payload;
     assertValidCountQuantity(quantidade);
+    assertValidLote(lote);
+
+    const newModelLocationId = oc_localizacao_id || item_id;
+
+    if (newModelLocationId) {
+      const locationContext = await repository.findLocalizacaoContextById(newModelLocationId);
+
+      if (locationContext && Number(locationContext.oc_id) === Number(oc_id)) {
+        return saveNewModelCount({
+          user,
+          empresaId,
+          payload: {
+            oc_id,
+            oc_localizacao_id: newModelLocationId,
+            quantidade,
+            lote: cleanText(lote)
+          },
+          auditContext
+        });
+      }
+    }
 
     const userId = Number(user.id);
     const { item, count } = await repository.withTransaction(async (tx) => {
@@ -724,7 +831,7 @@ function createOcService({ repository, audit = noopAudit } = {}) {
         ocId: oc_id,
         itemId: item_id,
         quantidade,
-        lote,
+        lote: cleanText(lote),
         userId
       });
 
@@ -732,7 +839,7 @@ function createOcService({ repository, audit = noopAudit } = {}) {
         ocId: oc_id,
         itemId: item_id,
         quantidade,
-        lote,
+        lote: cleanText(lote),
         countedStatus: ITEM_STATUS.COUNTED
       });
 
@@ -749,8 +856,137 @@ function createOcService({ repository, audit = noopAudit } = {}) {
         empresa_id: empresaId,
         contagem_id: count.id,
         quantidade,
-        lote,
+        lote: cleanText(lote),
         previous_status: item.status,
+        new_status: ITEM_STATUS.COUNTED
+      },
+      auditContext
+    });
+
+    return count;
+  }
+
+  function mapNewCountError(err) {
+    if (err?.code === '23505' && String(err.constraint || '').includes('idx_contagens_assignment_localizacao_unique')) {
+      return conflict('Localizacao ja foi contada neste assignment');
+    }
+
+    return err;
+  }
+
+  async function saveNewModelCount({ user, empresaId, payload, auditContext }) {
+    const { oc_id, oc_localizacao_id, quantidade, lote } = payload;
+    const userId = Number(user.id);
+
+    const { context, assignment, count, legacyItem } = await repository.withTransaction(async (tx) => {
+      const currentUser = await assertEstoquistaEligibleForFirstCount(user, empresaId, tx);
+      const localizacao = await tx.findLocalizacaoContextById(oc_localizacao_id, { forUpdate: true });
+
+      if (!localizacao) {
+        throw notFound('Localizacao da OC nao encontrada');
+      }
+
+      if (Number(localizacao.oc_id) !== Number(oc_id)) {
+        throw badRequest('Localizacao nao pertence a esta OC');
+      }
+
+      const oc = {
+        id: localizacao.oc_id,
+        gestor_id: localizacao.gestor_id,
+        estoquista_id: localizacao.estoquista_id,
+        empresa_id: localizacao.empresa_id,
+        status: localizacao.oc_status
+      };
+      assertOcEmpresa(oc, empresaId);
+      ensureOcOpen(oc);
+
+      const activeAssignment = await tx.findActiveFirstCountAssignment(
+        { ocId: localizacao.oc_id, estoquistaId: currentUser.id },
+        { forUpdate: true }
+      );
+
+      if (!activeAssignment) {
+        throw forbidden('Voce nao tem assignment ativo para esta OC');
+      }
+
+      const existingCount = await tx.findCountByAssignmentAndLocation({
+        assignmentId: activeAssignment.id,
+        ocLocalizacaoId: localizacao.id
+      });
+
+      if (existingCount) {
+        throw conflict('Localizacao ja foi contada neste assignment');
+      }
+
+      ensureLocalizacaoAvailableForFirstCount(localizacao);
+
+      const matchedLegacyItem = await tx.findLegacyItemForLocalizacao({
+        ocId: localizacao.oc_id,
+        codigo: localizacao.codigo,
+        descricao: localizacao.descricao_snapshot,
+        endereco: localizacao.endereco_snapshot
+      });
+
+      let createdCount;
+      try {
+        createdCount = await tx.createNewModelCount({
+          ocId: localizacao.oc_id,
+          ocProdutoId: localizacao.oc_produto_id,
+          ocLocalizacaoId: localizacao.id,
+          assignmentId: activeAssignment.id,
+          legacyItemId: matchedLegacyItem?.id || null,
+          quantidade,
+          lote,
+          userId
+        });
+      } catch (err) {
+        throw mapNewCountError(err);
+      }
+
+      await tx.updateLocalizacaoStatus({
+        ocLocalizacaoId: localizacao.id,
+        status: ITEM_STATUS.COUNTED
+      });
+      await tx.updateProdutoStatusFromLocalizacoes({
+        ocProdutoId: localizacao.oc_produto_id,
+        pendingStatus: ITEM_STATUS.PENDING,
+        countedStatus: ITEM_STATUS.COUNTED
+      });
+
+      if (matchedLegacyItem) {
+        await tx.updateItemCount({
+          ocId: localizacao.oc_id,
+          itemId: matchedLegacyItem.id,
+          quantidade,
+          lote,
+          countedStatus: ITEM_STATUS.COUNTED
+        });
+      }
+
+      return {
+        context: localizacao,
+        assignment: activeAssignment,
+        count: createdCount,
+        legacyItem: matchedLegacyItem
+      };
+    });
+
+    await audit.logAction({
+      user,
+      action: 'oc.location_counted',
+      entityType: 'oc_localizacao',
+      entityId: context.id,
+      metadata: {
+        oc_id: context.oc_id,
+        empresa_id: empresaId,
+        assignment_id: assignment.id,
+        oc_produto_id: context.oc_produto_id,
+        oc_localizacao_id: context.id,
+        legacy_item_id: legacyItem?.id || null,
+        contagem_id: count.id,
+        quantidade,
+        lote,
+        previous_status: context.status,
         new_status: ITEM_STATUS.COUNTED
       },
       auditContext
@@ -763,8 +999,50 @@ function createOcService({ repository, audit = noopAudit } = {}) {
     const { oc, updatedOc, validation } = await repository.withTransaction(async (tx) => {
       const foundOc = await getOcOrFail(ocId, tx, { forUpdate: true });
       assertOcEmpresa(foundOc, empresaId);
-      assertEstoquistaOwnership(user, foundOc);
       ensureOcOpen(foundOc);
+
+      if (await tx.ocHasNewModel(ocId)) {
+        await assertEstoquistaEligibleForFirstCount(user, empresaId, tx);
+        const assignment = await tx.findActiveFirstCountAssignment(
+          { ocId, estoquistaId: user.id },
+          { forUpdate: true }
+        );
+
+        if (!assignment) {
+          throw forbidden('Voce nao tem assignment ativo para esta OC');
+        }
+
+        const currentValidation = await tx.getNewModelFinalizeValidation({
+          ocId,
+          assignmentId: assignment.id
+        });
+
+        if (!currentValidation.oc_existe) {
+          throw notFound('OC nao encontrada');
+        }
+
+        if (Number(currentValidation.qtd_ativos || 0) === 0) {
+          throw badRequest('Nenhuma localizacao disponivel para finalizar esta OC');
+        }
+
+        if (Number(currentValidation.qtd_contados || 0) !== Number(currentValidation.qtd_ativos || 0)) {
+          throw badRequest('Conclua a contagem das localizacoes pendentes');
+        }
+
+        await tx.finalizeAssignment({ assignmentId: assignment.id });
+        const currentUpdatedOc = await tx.updateOcStatus({
+          ocId,
+          status: OC_STATUS.WAITING_APPROVAL
+        });
+
+        return {
+          oc: foundOc,
+          updatedOc: currentUpdatedOc,
+          validation: currentValidation
+        };
+      }
+
+      assertEstoquistaOwnership(user, foundOc);
 
       const currentValidation = await tx.getFinalizeValidation({
         ocId,

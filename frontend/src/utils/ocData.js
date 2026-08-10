@@ -194,6 +194,18 @@ export function attachLocationsToItems(items, produtosExterno, produto, getLocal
   }
 
   const productItems = asArray(items).filter((item) => item?.produto === produto);
+  const hasSnapshotLocations = productItems.some((item) => item?.new_model || item?.oc_localizacao_id);
+
+  if (hasSnapshotLocations) {
+    return productItems.map((item) => ({
+      ...item,
+      location: {
+        ...(item?.location || {}),
+        endereco: item?.location?.endereco || item?.endereco
+      }
+    }));
+  }
+
   const productLocations = getLocalizacoesPorProduto(produtosExterno, produto);
 
   return productItems.map((item, index) => ({

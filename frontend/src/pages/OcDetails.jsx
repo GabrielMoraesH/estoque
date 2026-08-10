@@ -143,11 +143,19 @@ function OcDetails() {
     setSelectedProduct(e.target.value);
   }, []);
 
-  const handleOpenItem = useCallback((itemId) => {
+  const handleOpenItem = useCallback((item) => {
+    const itemId = item?.id;
+
+    if (!itemId) {
+      return;
+    }
+
     navigate(`/contar/${id}/${itemId}`, {
       state: {
         from: location.state?.from || "/minhas-ocs",
-        selectedProduct
+        selectedProduct,
+        newModel: Boolean(item?.new_model || item?.oc_localizacao_id),
+        ocLocalizacaoId: item?.oc_localizacao_id || null
       }
     });
   }, [id, location.state?.from, navigate, selectedProduct]);

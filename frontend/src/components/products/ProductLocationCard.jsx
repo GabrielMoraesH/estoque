@@ -1,4 +1,4 @@
-import { memo, useCallback } from "react";
+import { memo, useCallback, useMemo } from "react";
 import {
   formatLocationName,
   formatProductName,
@@ -7,7 +7,7 @@ import {
 } from "../../utils/formatters";
 
 function ProductLocationCard({ item, productName, canOpenItem, onOpenItem }) {
-  const safeItem = item || {};
+  const safeItem = useMemo(() => item || {}, [item]);
   const isCounted = safeItem.status === "contado";
   const isActionDisabled = !canOpenItem || !safeItem.id || isCounted;
 
@@ -16,8 +16,8 @@ function ProductLocationCard({ item, productName, canOpenItem, onOpenItem }) {
       return;
     }
 
-    onOpenItem(safeItem.id);
-  }, [isActionDisabled, onOpenItem, safeItem.id]);
+    onOpenItem(safeItem);
+  }, [isActionDisabled, onOpenItem, safeItem]);
 
   return (
     <div
