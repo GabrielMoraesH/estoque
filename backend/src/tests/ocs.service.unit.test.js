@@ -74,7 +74,7 @@ describe('OcService unitario com repository mockado', () => {
   const admin = { id: 1, role: 'admin' };
   const estoquista = { id: 22, role: 'estoquista' };
 
-  it('cria OC com itens dentro de transacao e registra auditoria', async () => {
+  it('cria OC nova sem oc_items dentro de transacao e registra auditoria', async () => {
     const repository = createRepositoryMock({
       findUserById: jest.fn().mockResolvedValue({
         id: 22,
@@ -95,8 +95,7 @@ describe('OcService unitario com repository mockado', () => {
         .mockResolvedValueOnce({ id: 900 })
         .mockResolvedValueOnce({ id: 901 }),
       createOcLocalizacao: jest.fn().mockResolvedValue({}),
-      createOcAssignment: jest.fn().mockResolvedValue({ id: 950 }),
-      createItem: jest.fn().mockResolvedValue({})
+      createOcAssignment: jest.fn().mockResolvedValue({ id: 950 })
     });
     const { service, audit } = createService({ repository });
 
@@ -140,17 +139,7 @@ describe('OcService unitario com repository mockado', () => {
       ocId: 100,
       ocProdutoIds: [900, 901]
     });
-    expect(repository.createItem).toHaveBeenCalledTimes(2);
-    expect(repository.createItem).toHaveBeenNthCalledWith(1, {
-      ocId: 100,
-      produto: 'Seringa',
-      saldoSistema: 12,
-      endereco: 'A1',
-      codigo: 'SER',
-      codigoBarras: null,
-      validade: null,
-      status: ITEM_STATUS.PENDING
-    });
+    expect(repository.createItem).not.toHaveBeenCalled();
     expect(audit.logAction).toHaveBeenCalledWith(expect.objectContaining({
       action: 'oc.created',
       entityType: 'oc',
@@ -928,14 +917,7 @@ describe('OcService unitario com repository mockado', () => {
         status: 'ativo'
       })
     ]);
-    expect(state.items).toHaveLength(1);
-    expect(state.items[0]).toMatchObject({
-      produto: 'Dipirona 500mg',
-      endereco: 'A1-01-01',
-      codigo: '789123',
-      codigo_barras: '789123456789',
-      validade: '2026-12-01'
-    });
+    expect(state.items).toHaveLength(0);
     expect(state.ocProdutos[0]).toMatchObject({
       descricao_snapshot: 'Dipirona 500mg',
       codigo: '789123',
@@ -976,7 +958,7 @@ describe('OcService unitario com repository mockado', () => {
     expect(state.ocProdutos).toHaveLength(1);
     expect(state.ocProdutos[0].saldo_sistema_snapshot).toBe(60);
     expect(state.ocLocalizacoes).toHaveLength(3);
-    expect(state.items).toHaveLength(3);
+    expect(state.items).toHaveLength(0);
     expect(list[0].qtd).toBe(1);
   });
 
@@ -1009,7 +991,7 @@ describe('OcService unitario com repository mockado', () => {
 
     expect(state.ocProdutos).toHaveLength(2);
     expect(state.ocLocalizacoes).toHaveLength(4);
-    expect(state.items).toHaveLength(4);
+    expect(state.items).toHaveLength(0);
     expect(state.ocProdutos.find((item) => item.codigo === 'A')).toMatchObject({
       saldo_sistema_snapshot: 125
     });
@@ -1386,7 +1368,7 @@ describe('OcService unitario com repository mockado', () => {
     return { repository, service, oc };
   }
 
-  it('conta localizacao no novo modelo com assignment e faz dual-write conservador', async () => {
+  it('conta localizacao no novo modelo com item_id nulo e sem dual-write legado', async () => {
     const { repository, service, oc } = await createNewModelOcForCount();
     const locationId = repository.__getState().ocLocalizacoes[0].id;
 
@@ -1407,6 +1389,7 @@ describe('OcService unitario com repository mockado', () => {
       oc_produto_id: state.ocProdutos[0].id,
       oc_localizacao_id: locationId,
       assignment_id: state.ocAssignments[0].id,
+      item_id: null,
       user_id: 22,
       quantidade: 0,
       lote: 'L1'
@@ -1414,11 +1397,7 @@ describe('OcService unitario com repository mockado', () => {
     expect(state.counts).toHaveLength(1);
     expect(state.ocLocalizacoes[0].status).toBe(ITEM_STATUS.COUNTED);
     expect(state.ocProdutos[0].status).toBe(ITEM_STATUS.PENDING);
-    expect(state.items[0]).toMatchObject({
-      saldo_contado: 0,
-      lote: 'L1',
-      status: ITEM_STATUS.COUNTED
-    });
+    expect(state.items).toHaveLength(0);
   });
 
   it('usa assignment ativo como autoridade de Minhas OCs em OC nova mesmo com estoquista_id legado divergente', async () => {
@@ -1474,13 +1453,13 @@ describe('OcService unitario com repository mockado', () => {
     expect(repository.__getState().ocProdutos[0].status).toBe(ITEM_STATUS.COUNTED);
   });
 
-  it('faz rollback da contagem nova se o dual-write legado falhar', async () => {
+  it('faz rollback da contagem nova se falhar ao atualizar localizacao', async () => {
     const repository = createInMemoryOcRepository({
       users: [
         { id: 11, nome: 'Gestor', role: 'gestor', empresas: [{ id: 1 }] },
         { id: 22, nome: 'Estoquista', role: 'estoquista', nivel_estoquista: 1, ativo: true, empresas: [{ id: 1 }] }
       ],
-      failOnUpdateItemCount: true
+      failOnUpdateLocalizacaoStatus: true
     });
     const { service } = createService({ repository });
     const oc = await service.createOcWithItems({
@@ -1497,17 +1476,13 @@ describe('OcService unitario com repository mockado', () => {
       user: estoquista,
       empresaId: 1,
       payload: { oc_id: oc.id, oc_localizacao_id: locationId, quantidade: 1, lote: 'L1' }
-    })).rejects.toThrow('item count update failed');
+    })).rejects.toThrow('location status update failed');
 
     const state = repository.__getState();
     expect(state.counts).toHaveLength(0);
     expect(state.ocLocalizacoes[0].status).toBe(ITEM_STATUS.PENDING);
     expect(state.ocProdutos[0].status).toBe(ITEM_STATUS.PENDING);
-    expect(state.items[0]).toMatchObject({
-      saldo_contado: null,
-      lote: null,
-      status: ITEM_STATUS.PENDING
-    });
+    expect(state.items).toHaveLength(0);
   });
 
   it('rejeita duplicidade e double-submit sem criar segundo evento', async () => {
@@ -1620,8 +1595,6 @@ describe('OcService unitario com repository mockado', () => {
       empresaId: 1,
       payload: { oc_id: oc.id, oc_localizacao_id: locationId, quantidade: 7, lote: 'RET' }
     });
-    repository.__getState().items[0].endereco = 'NAO_DEVE_APARECER';
-
     const items = await service.listOcItems({ user: estoquista, empresaId: 1, ocId: oc.id });
     const counted = items.find((item) => Number(item.oc_localizacao_id) === Number(locationId));
 

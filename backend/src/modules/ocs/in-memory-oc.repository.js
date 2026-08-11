@@ -17,6 +17,8 @@ function createInMemoryOcRepository({
   ocAssignmentProdutos = [],
   failOnCreateOcLocalizacao = false,
   failOnCreateOcAssignmentProdutos = false,
+  failOnUpdateLocalizacaoStatus = false,
+  failOnUpdateProdutoStatusFromLocalizacoes = false,
   failOnUpdateItemCount = false
 } = {}) {
   const state = {
@@ -319,6 +321,16 @@ function createInMemoryOcRepository({
                 Number(assignment.ciclo) === 1 &&
                 assignment.fase === 'contagem'
             ) || null;
+            const movementDates = [
+              ...currentState.counts
+                .filter((count) => Number(count.oc_id) === Number(oc.id))
+                .map((count) => count.created_at),
+              ...currentState.ocAssignments
+                .filter((assignment) => Number(assignment.oc_id) === Number(oc.id))
+                .flatMap((assignment) => [assignment.created_at, assignment.finalizado_em])
+            ]
+              .filter(Boolean)
+              .sort();
             const estoquista = currentState.users.find(
               (user) => Number(user.id) === Number(latestAssignment?.estoquista_id || oc.estoquista_id)
             );
@@ -328,7 +340,7 @@ function createInMemoryOcRepository({
               estoquista_nome: estoquista?.nome || null,
               responsavel_atual_id: latestAssignment?.estoquista_id || oc.estoquista_id,
               primeira_contagem_estoquista_id: firstAssignment?.estoquista_id || null,
-              ultima_contagem_em: null
+              ultima_contagem_em: movementDates.at(-1) || null
             };
           })
           .sort((a, b) => Number(b.id) - Number(a.id));
@@ -783,7 +795,6 @@ function createInMemoryOcRepository({
         ocProdutoId,
         ocLocalizacaoId,
         assignmentId,
-        legacyItemId,
         quantidade,
         lote,
         userId
@@ -804,7 +815,7 @@ function createInMemoryOcRepository({
         const count = {
           id: currentState.nextCountId++,
           oc_id: Number(ocId),
-          item_id: legacyItemId ? Number(legacyItemId) : null,
+          item_id: null,
           oc_produto_id: Number(ocProdutoId),
           oc_localizacao_id: Number(ocLocalizacaoId),
           assignment_id: Number(assignmentId),
@@ -818,6 +829,10 @@ function createInMemoryOcRepository({
       },
 
       async updateLocalizacaoStatus({ ocLocalizacaoId, status }) {
+        if (failOnUpdateLocalizacaoStatus) {
+          throw new Error('location status update failed');
+        }
+
         const localizacao = currentState.ocLocalizacoes.find(
           (item) => Number(item.id) === Number(ocLocalizacaoId)
         );
@@ -828,6 +843,10 @@ function createInMemoryOcRepository({
       },
 
       async updateProdutoStatusFromLocalizacoes({ ocProdutoId, pendingStatus, countedStatus }) {
+        if (failOnUpdateProdutoStatusFromLocalizacoes) {
+          throw new Error('product status update failed');
+        }
+
         const produto = currentState.ocProdutos.find((item) => Number(item.id) === Number(ocProdutoId));
 
         if (!produto) {

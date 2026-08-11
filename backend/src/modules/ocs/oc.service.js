@@ -566,19 +566,6 @@ function createOcService({ repository, audit = noopAudit } = {}) {
         throw mapCreateModelError(err);
       }
 
-      for (const item of items) {
-        await tx.createItem({
-          ocId: createdOc.id,
-          produto: item.produto,
-          saldoSistema: item.saldo_sistema,
-          endereco: cleanText(item.endereco),
-          codigo: cleanText(item.codigo),
-          codigoBarras: cleanText(item.codigo_barras),
-          validade: normalizeDateSnapshot(item.validade),
-          status: ITEM_STATUS.PENDING
-        });
-      }
-
       return createdOc;
     });
 
@@ -1017,7 +1004,7 @@ function createOcService({ repository, audit = noopAudit } = {}) {
     const { oc_id, oc_localizacao_id, quantidade, lote } = payload;
     const userId = Number(user.id);
 
-    const { context, assignment, count, legacyItem } = await repository.withTransaction(async (tx) => {
+    const { context, assignment, count } = await repository.withTransaction(async (tx) => {
       const localizacao = await tx.findLocalizacaoContextById(oc_localizacao_id, { forUpdate: true });
 
       if (!localizacao) {
@@ -1071,13 +1058,6 @@ function createOcService({ repository, audit = noopAudit } = {}) {
         ensureLocalizacaoAvailableForFirstCount(localizacao);
       }
 
-      const matchedLegacyItem = await tx.findLegacyItemForLocalizacao({
-        ocId: localizacao.oc_id,
-        codigo: localizacao.codigo,
-        descricao: localizacao.descricao_snapshot,
-        endereco: localizacao.endereco_snapshot
-      });
-
       let createdCount;
       try {
         createdCount = await tx.createNewModelCount({
@@ -1085,7 +1065,6 @@ function createOcService({ repository, audit = noopAudit } = {}) {
           ocProdutoId: localizacao.oc_produto_id,
           ocLocalizacaoId: localizacao.id,
           assignmentId: activeAssignment.id,
-          legacyItemId: matchedLegacyItem?.id || null,
           quantidade,
           lote,
           userId
@@ -1104,21 +1083,10 @@ function createOcService({ repository, audit = noopAudit } = {}) {
         countedStatus: ITEM_STATUS.COUNTED
       });
 
-      if (matchedLegacyItem && activeAssignment.fase === 'contagem') {
-        await tx.updateItemCount({
-          ocId: localizacao.oc_id,
-          itemId: matchedLegacyItem.id,
-          quantidade,
-          lote,
-          countedStatus: ITEM_STATUS.COUNTED
-        });
-      }
-
       return {
         context: localizacao,
         assignment: activeAssignment,
-        count: createdCount,
-        legacyItem: matchedLegacyItem
+        count: createdCount
       };
     });
 
@@ -1133,7 +1101,6 @@ function createOcService({ repository, audit = noopAudit } = {}) {
         assignment_id: assignment.id,
         oc_produto_id: context.oc_produto_id,
         oc_localizacao_id: context.id,
-        legacy_item_id: legacyItem?.id || null,
         contagem_id: count.id,
         quantidade,
         lote,

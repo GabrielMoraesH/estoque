@@ -214,11 +214,19 @@ function createOcRepository(db = pool) {
                 first_assignment.estoquista_id AS primeira_contagem_estoquista_id,
                 empresas.codigo AS empresa_codigo,
                 empresas.nome AS empresa_nome,
-                MAX(contagens.created_at) AS ultima_contagem_em
+                NULLIF(
+                  GREATEST(
+                    COALESCE(MAX(contagens.created_at), '-infinity'::timestamptz),
+                    COALESCE(MAX(movement_assignments.created_at), '-infinity'::timestamptz),
+                    COALESCE(MAX(movement_assignments.finalizado_em), '-infinity'::timestamptz)
+                  ),
+                  '-infinity'::timestamptz
+                ) AS ultima_contagem_em
          FROM ocs
          LEFT JOIN oc_items ON oc_items.oc_id = ocs.id
          LEFT JOIN oc_produtos ON oc_produtos.oc_id = ocs.id
          LEFT JOIN contagens ON contagens.oc_id = ocs.id
+         LEFT JOIN oc_assignments movement_assignments ON movement_assignments.oc_id = ocs.id
          LEFT JOIN LATERAL (
            SELECT assignments.estoquista_id
            FROM oc_assignments assignments
@@ -878,7 +886,6 @@ function createOcRepository(db = pool) {
       ocProdutoId,
       ocLocalizacaoId,
       assignmentId,
-      legacyItemId,
       quantidade,
       lote,
       userId
@@ -898,7 +905,7 @@ function createOcRepository(db = pool) {
          RETURNING *`,
         [
           ocId,
-          legacyItemId || null,
+          null,
           ocProdutoId,
           ocLocalizacaoId,
           assignmentId,

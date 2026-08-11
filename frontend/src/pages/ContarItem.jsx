@@ -19,17 +19,69 @@ function ContarItem() {
   const { showToast } = useToast();
   const { activeEmpresa } = useEmpresa();
   const { canCountOc } = usePermissions();
-  const { saveItemCount } = useOCs();
+  const { fetchOcItems, saveItemCount } = useOCs();
 
   const [quantidade, setQuantidade] = useState("");
   const [lote, setLote] = useState("");
   const [saving, setSaving] = useState(false);
+  const [countTarget, setCountTarget] = useState(null);
 
   useEffect(() => {
     setQuantidade("");
     setLote("");
     setSaving(false);
+    setCountTarget(null);
   }, [activeEmpresa?.id, itemId, ocId]);
+
+  useEffect(() => {
+    let isCurrentRequest = true;
+
+    async function loadCountTarget() {
+      if (!canCountOc) {
+        return;
+      }
+
+      const stateLocationId = location.state?.ocLocalizacaoId;
+      if (location.state?.newModel && stateLocationId) {
+        setCountTarget({ newModel: true, ocLocalizacaoId: stateLocationId });
+        return;
+      }
+
+      try {
+        const items = await fetchOcItems(ocId);
+        if (!isCurrentRequest) {
+          return;
+        }
+
+        const item = Array.isArray(items)
+          ? items.find((candidate) => String(candidate?.id) === String(itemId))
+          : null;
+        const ocLocalizacaoId = item?.oc_localizacao_id || (item?.new_model ? item?.id : null);
+
+        setCountTarget({
+          newModel: Boolean(item?.new_model || item?.oc_localizacao_id),
+          ocLocalizacaoId
+        });
+      } catch (error) {
+        if (isCurrentRequest) {
+          setCountTarget(null);
+        }
+      }
+    }
+
+    loadCountTarget();
+
+    return () => {
+      isCurrentRequest = false;
+    };
+  }, [
+    canCountOc,
+    fetchOcItems,
+    itemId,
+    location.state?.newModel,
+    location.state?.ocLocalizacaoId,
+    ocId
+  ]);
 
   const handleSalvar = useCallback(async (event) => {
     event?.preventDefault();
@@ -46,8 +98,8 @@ function ContarItem() {
     setSaving(true);
 
     try {
-      const newModelLocationId = location.state?.ocLocalizacaoId || itemId;
-      const countPayload = location.state?.newModel
+      const newModelLocationId = countTarget?.ocLocalizacaoId || itemId;
+      const countPayload = countTarget?.newModel
         ? {
             oc_id: ocId,
             oc_localizacao_id: newModelLocationId,
@@ -86,9 +138,9 @@ function ContarItem() {
     }
   }, [
     canCountOc,
+    countTarget?.newModel,
+    countTarget?.ocLocalizacaoId,
     itemId,
-    location.state?.newModel,
-    location.state?.ocLocalizacaoId,
     location.state?.from,
     location.state?.selectedProduct,
     navigate,
