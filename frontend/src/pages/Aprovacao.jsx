@@ -368,7 +368,9 @@ function Aprovacao() {
       return;
     }
 
-    if (Number(novoEstoquistaId) === Number(selectedOC?.estoquista_id)) {
+    const firstCountEstoquistaId = selectedOC?.primeira_contagem_estoquista_id || selectedOC?.estoquista_id;
+
+    if (Number(novoEstoquistaId) === Number(firstCountEstoquistaId)) {
       showToast("Selecione um estoquista diferente do responsável pela primeira contagem.", "error");
       return;
     }
@@ -395,6 +397,7 @@ function Aprovacao() {
     recounting,
     resetSelectedOcState,
     selectedOC?.estoquista_id,
+    selectedOC?.primeira_contagem_estoquista_id,
     selectedRecountEstoquistaId,
     sendOcItemsToRecount,
     showToast
@@ -518,7 +521,7 @@ function Aprovacao() {
           open={Boolean(recountModal)}
           estoquistas={estoquistas}
           selectedEstoquistaId={selectedRecountEstoquistaId}
-          currentEstoquistaId={selectedOC?.estoquista_id}
+          currentEstoquistaId={selectedOC?.primeira_contagem_estoquista_id || selectedOC?.estoquista_id}
           oc={selectedOC}
           loadingEstoquistas={loadingEstoquistas}
           confirming={recounting}

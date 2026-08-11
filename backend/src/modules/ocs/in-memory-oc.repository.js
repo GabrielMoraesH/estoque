@@ -310,11 +310,24 @@ function createInMemoryOcRepository({
           .map((oc) => {
             const ocItems = currentState.items.filter((item) => Number(item.oc_id) === Number(oc.id));
             const products = currentState.ocProdutos.filter((item) => Number(item.oc_id) === Number(oc.id));
-            const estoquista = currentState.users.find((user) => Number(user.id) === Number(oc.estoquista_id));
+            const latestAssignment = currentState.ocAssignments
+              .filter((assignment) => Number(assignment.oc_id) === Number(oc.id))
+              .sort((a, b) => Number(b.ciclo) - Number(a.ciclo) || Number(b.id) - Number(a.id))[0] || null;
+            const firstAssignment = currentState.ocAssignments.find(
+              (assignment) =>
+                Number(assignment.oc_id) === Number(oc.id) &&
+                Number(assignment.ciclo) === 1 &&
+                assignment.fase === 'contagem'
+            ) || null;
+            const estoquista = currentState.users.find(
+              (user) => Number(user.id) === Number(latestAssignment?.estoquista_id || oc.estoquista_id)
+            );
             return {
               ...clone(oc),
               qtd: products.length > 0 ? products.length : ocItems.length,
               estoquista_nome: estoquista?.nome || null,
+              responsavel_atual_id: latestAssignment?.estoquista_id || oc.estoquista_id,
+              primeira_contagem_estoquista_id: firstAssignment?.estoquista_id || null,
               ultima_contagem_em: null
             };
           })
@@ -329,7 +342,13 @@ function createInMemoryOcRepository({
                 Number(item.oc_id) === Number(oc.id) &&
                 item.status === 'ativo'
             );
-            return Number(assignment?.estoquista_id || oc.estoquista_id) === Number(estoquistaId);
+            const hasNewModel = currentState.ocProdutos.some((produto) => Number(produto.oc_id) === Number(oc.id));
+
+            if (hasNewModel) {
+              return Boolean(assignment) && Number(assignment.estoquista_id) === Number(estoquistaId);
+            }
+
+            return Number(oc.estoquista_id) === Number(estoquistaId);
           })
           .filter((oc) => Number(oc.empresa_id) === Number(empresaId))
           .filter((oc) => ![ocStatus.waitingApproval, ocStatus.finalized].includes(oc.status || ocStatus.open))
@@ -957,8 +976,14 @@ function listApproval({ currentState, gestorId, empresaId, openStatus, waitingAp
     .map((oc) => {
       const gestor = currentState.users.find((user) => Number(user.id) === Number(oc.gestor_id));
       const lastAssignment = currentState.ocAssignments
-        .filter((assignment) => Number(assignment.oc_id) === Number(oc.id) && assignment.status === 'finalizado')
+        .filter((assignment) => Number(assignment.oc_id) === Number(oc.id))
         .sort((a, b) => Number(b.ciclo) - Number(a.ciclo) || Number(b.id) - Number(a.id))[0] || null;
+      const firstAssignment = currentState.ocAssignments.find(
+        (assignment) =>
+          Number(assignment.oc_id) === Number(oc.id) &&
+          Number(assignment.ciclo) === 1 &&
+          assignment.fase === 'contagem'
+      ) || null;
       const estoquista = currentState.users.find(
         (user) => Number(user.id) === Number(lastAssignment?.estoquista_id || oc.estoquista_id)
       );
@@ -969,7 +994,9 @@ function listApproval({ currentState, gestorId, empresaId, openStatus, waitingAp
         ...clone(oc),
         qtd: products.length > 0 ? products.length : ocItems.length,
         gestor_nome: gestor?.nome || null,
-        estoquista_nome: estoquista?.nome || null
+        estoquista_nome: estoquista?.nome || null,
+        responsavel_atual_id: lastAssignment?.estoquista_id || oc.estoquista_id,
+        primeira_contagem_estoquista_id: firstAssignment?.estoquista_id || null
       };
     })
     .sort((a, b) => Number(b.id) - Number(a.id));

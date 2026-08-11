@@ -1421,6 +1421,40 @@ describe('OcService unitario com repository mockado', () => {
     });
   });
 
+  it('usa assignment ativo como autoridade de Minhas OCs em OC nova mesmo com estoquista_id legado divergente', async () => {
+    const repository = createInMemoryOcRepository({
+      users: [
+        { id: 22, nome: 'Assignment', role: 'estoquista', nivel_estoquista: 1, ativo: true, empresas: [{ id: 1 }] },
+        { id: 33, nome: 'Legado', role: 'estoquista', nivel_estoquista: 1, ativo: true, empresas: [{ id: 1 }] }
+      ],
+      ocs: [{ id: 70, gestor_id: 11, estoquista_id: 33, empresa_id: 1, status: OC_STATUS.OPEN }],
+      items: [{
+        id: 900,
+        oc_id: 70,
+        produto: 'Dipirona',
+        codigo: 'DIP',
+        endereco: 'A1',
+        saldo_sistema: 10,
+        status: ITEM_STATUS.PENDING
+      }],
+      ocProdutos: [{ id: 80, oc_id: 70, codigo: 'DIP', descricao_snapshot: 'Dipirona', status: ITEM_STATUS.PENDING }],
+      ocLocalizacoes: [{ id: 90, oc_produto_id: 80, endereco_snapshot: 'A1', status: ITEM_STATUS.PENDING }],
+      ocAssignments: [{ id: 100, oc_id: 70, ciclo: 1, fase: 'contagem', estoquista_id: 22, status: 'ativo' }],
+      ocAssignmentProdutos: [{ assignment_id: 100, oc_id: 70, oc_produto_id: 80 }]
+    });
+    const { service } = createService({ repository });
+
+    await expect(service.listMyEstoquistaOcs({
+      user: { id: 22, role: 'estoquista' },
+      empresaId: 1
+    })).resolves.toEqual([expect.objectContaining({ id: 70, qtd: 1, qtd_contados: 0 })]);
+
+    await expect(service.listMyEstoquistaOcs({
+      user: { id: 33, role: 'estoquista' },
+      empresaId: 1
+    })).resolves.toEqual([]);
+  });
+
   it('consolida produto como contado somente quando todas as localizacoes forem contadas', async () => {
     const { repository, service, oc } = await createNewModelOcForCount();
     const [first, second] = repository.__getState().ocLocalizacoes;

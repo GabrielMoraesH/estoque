@@ -209,7 +209,9 @@ function createOcRepository(db = pool) {
                   WHEN COUNT(DISTINCT oc_produtos.id) > 0 THEN COUNT(DISTINCT oc_produtos.id)
                   ELSE COUNT(DISTINCT oc_items.id)
                 END::int AS qtd,
-                COALESCE(last_assignment_user.nome, estoquista.nome) AS estoquista_nome,
+                COALESCE(latest_assignment_user.nome, estoquista.nome) AS estoquista_nome,
+                COALESCE(latest_assignment.estoquista_id, ocs.estoquista_id) AS responsavel_atual_id,
+                first_assignment.estoquista_id AS primeira_contagem_estoquista_id,
                 empresas.codigo AS empresa_codigo,
                 empresas.nome AS empresa_nome,
                 MAX(contagens.created_at) AS ultima_contagem_em
@@ -221,16 +223,24 @@ function createOcRepository(db = pool) {
            SELECT assignments.estoquista_id
            FROM oc_assignments assignments
            WHERE assignments.oc_id = ocs.id
-             AND assignments.status = 'finalizado'
            ORDER BY assignments.ciclo DESC, assignments.id DESC
            LIMIT 1
-         ) last_assignment ON true
-         LEFT JOIN users last_assignment_user ON last_assignment_user.id = last_assignment.estoquista_id
+         ) latest_assignment ON true
+         LEFT JOIN LATERAL (
+           SELECT assignments.estoquista_id
+           FROM oc_assignments assignments
+           WHERE assignments.oc_id = ocs.id
+             AND assignments.ciclo = 1
+             AND assignments.fase = 'contagem'
+           ORDER BY assignments.id ASC
+           LIMIT 1
+         ) first_assignment ON true
+         LEFT JOIN users latest_assignment_user ON latest_assignment_user.id = latest_assignment.estoquista_id
          LEFT JOIN users estoquista ON estoquista.id = ocs.estoquista_id
          LEFT JOIN empresas ON empresas.id = ocs.empresa_id
          WHERE ocs.gestor_id = $1
            AND ocs.empresa_id = $2
-         GROUP BY ocs.id, estoquista.nome, last_assignment_user.nome, empresas.codigo, empresas.nome
+         GROUP BY ocs.id, estoquista.nome, latest_assignment_user.nome, latest_assignment.estoquista_id, first_assignment.estoquista_id, empresas.codigo, empresas.nome
          ORDER BY ocs.id DESC`,
         [gestorId, empresaId]
       );
@@ -266,7 +276,16 @@ function createOcRepository(db = pool) {
          LEFT JOIN contagens active_counts ON active_counts.assignment_id = oc_assignments.id
           AND active_counts.oc_localizacao_id = oc_localizacoes.id
          LEFT JOIN empresas ON empresas.id = ocs.empresa_id
-         WHERE COALESCE(oc_assignments.estoquista_id, ocs.estoquista_id) = $1
+         WHERE (
+             (
+               EXISTS (SELECT 1 FROM oc_produtos model_check WHERE model_check.oc_id = ocs.id)
+               AND oc_assignments.estoquista_id = $1
+             )
+             OR (
+               NOT EXISTS (SELECT 1 FROM oc_produtos model_check WHERE model_check.oc_id = ocs.id)
+               AND ocs.estoquista_id = $1
+             )
+           )
            AND ocs.empresa_id = $4
            AND COALESCE(ocs.status, $5) NOT IN ($6, $7)
          GROUP BY ocs.id, empresas.codigo, empresas.nome
@@ -293,7 +312,9 @@ function createOcRepository(db = pool) {
                   ELSE COUNT(DISTINCT oc_items.id)
                 END::int AS qtd,
                 gestor.nome AS gestor_nome,
-                estoquista.nome AS estoquista_nome,
+                COALESCE(latest_assignment_user.nome, estoquista.nome) AS estoquista_nome,
+                COALESCE(latest_assignment.estoquista_id, ocs.estoquista_id) AS responsavel_atual_id,
+                first_assignment.estoquista_id AS primeira_contagem_estoquista_id,
                 empresas.codigo AS empresa_codigo,
                 empresas.nome AS empresa_nome
          FROM ocs
@@ -303,17 +324,25 @@ function createOcRepository(db = pool) {
            SELECT assignments.estoquista_id
            FROM oc_assignments assignments
            WHERE assignments.oc_id = ocs.id
-             AND assignments.status = 'finalizado'
            ORDER BY assignments.ciclo DESC, assignments.id DESC
            LIMIT 1
-         ) last_assignment ON true
-         LEFT JOIN users last_assignment_user ON last_assignment_user.id = last_assignment.estoquista_id
+         ) latest_assignment ON true
+         LEFT JOIN LATERAL (
+           SELECT assignments.estoquista_id
+           FROM oc_assignments assignments
+           WHERE assignments.oc_id = ocs.id
+             AND assignments.ciclo = 1
+             AND assignments.fase = 'contagem'
+           ORDER BY assignments.id ASC
+           LIMIT 1
+         ) first_assignment ON true
+         LEFT JOIN users latest_assignment_user ON latest_assignment_user.id = latest_assignment.estoquista_id
          LEFT JOIN users gestor ON gestor.id = ocs.gestor_id
          LEFT JOIN users estoquista ON estoquista.id = ocs.estoquista_id
          LEFT JOIN empresas ON empresas.id = ocs.empresa_id
          WHERE COALESCE(ocs.status, $1) = $2
            AND ocs.empresa_id = $3
-         GROUP BY ocs.id, gestor.nome, estoquista.nome, last_assignment_user.nome, empresas.codigo, empresas.nome
+         GROUP BY ocs.id, gestor.nome, estoquista.nome, latest_assignment_user.nome, latest_assignment.estoquista_id, first_assignment.estoquista_id, empresas.codigo, empresas.nome
          ORDER BY ocs.id DESC`,
         [openStatus, waitingApprovalStatus, empresaId]
       );
@@ -329,7 +358,9 @@ function createOcRepository(db = pool) {
                   ELSE COUNT(DISTINCT oc_items.id)
                 END::int AS qtd,
                 gestor.nome AS gestor_nome,
-                COALESCE(last_assignment_user.nome, estoquista.nome) AS estoquista_nome,
+                COALESCE(latest_assignment_user.nome, estoquista.nome) AS estoquista_nome,
+                COALESCE(latest_assignment.estoquista_id, ocs.estoquista_id) AS responsavel_atual_id,
+                first_assignment.estoquista_id AS primeira_contagem_estoquista_id,
                 empresas.codigo AS empresa_codigo,
                 empresas.nome AS empresa_nome
          FROM ocs
@@ -339,18 +370,26 @@ function createOcRepository(db = pool) {
            SELECT assignments.estoquista_id
            FROM oc_assignments assignments
            WHERE assignments.oc_id = ocs.id
-             AND assignments.status = 'finalizado'
            ORDER BY assignments.ciclo DESC, assignments.id DESC
            LIMIT 1
-         ) last_assignment ON true
-         LEFT JOIN users last_assignment_user ON last_assignment_user.id = last_assignment.estoquista_id
+         ) latest_assignment ON true
+         LEFT JOIN LATERAL (
+           SELECT assignments.estoquista_id
+           FROM oc_assignments assignments
+           WHERE assignments.oc_id = ocs.id
+             AND assignments.ciclo = 1
+             AND assignments.fase = 'contagem'
+           ORDER BY assignments.id ASC
+           LIMIT 1
+         ) first_assignment ON true
+         LEFT JOIN users latest_assignment_user ON latest_assignment_user.id = latest_assignment.estoquista_id
          LEFT JOIN users gestor ON gestor.id = ocs.gestor_id
          LEFT JOIN users estoquista ON estoquista.id = ocs.estoquista_id
          LEFT JOIN empresas ON empresas.id = ocs.empresa_id
          WHERE COALESCE(ocs.status, $1) = $2
            AND ocs.gestor_id = $3
            AND ocs.empresa_id = $4
-         GROUP BY ocs.id, gestor.nome, estoquista.nome, last_assignment_user.nome, empresas.codigo, empresas.nome
+         GROUP BY ocs.id, gestor.nome, estoquista.nome, latest_assignment_user.nome, latest_assignment.estoquista_id, first_assignment.estoquista_id, empresas.codigo, empresas.nome
          ORDER BY ocs.id DESC`,
         [openStatus, waitingApprovalStatus, gestorId, empresaId]
       );
