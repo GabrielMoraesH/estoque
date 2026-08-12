@@ -12,6 +12,8 @@ const OC_REPOSITORY_METHODS = [
   'createItem',
   'listByGestor',
   'listByEstoquista',
+  'listAdminDashboardRows',
+  'listEstoquistaDashboardRows',
   'listApprovalForAdmin',
   'listApprovalForGestor',
   'approveItems',

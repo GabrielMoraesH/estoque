@@ -25,6 +25,7 @@ router.use(requireAuth);
 router.use(requireActiveEmpresa);
 
 router.post('/create-with-items', requireRole('admin', 'gestor'), validate(createOcWithItemsSchema), ocController.createWithItems);
+router.get('/dashboard', requireRole('admin', 'gestor', 'estoquista'), ocController.dashboard);
 router.get('/minhas/gestor', requireRole('gestor'), validate(myGestorOcListSchema), ocController.listMyGestorOcs);
 router.get('/gestor/:id', requireRole('admin', 'gestor'), validate(gestorOcListSchema), ocController.listByGestor);
 router.get('/minhas/estoquista', requireRole('estoquista'), validate(myEstoquistaOcListSchema), ocController.listMyEstoquistaOcs);

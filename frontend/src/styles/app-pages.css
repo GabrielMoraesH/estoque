@@ -225,6 +225,171 @@
   min-width: 170px;
 }
 
+.dashboard-indicator-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.dashboard-indicator-card {
+  min-width: 0;
+  min-height: 122px;
+  padding: 20px;
+  border: 1px solid #d9e0ea;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.05);
+  box-sizing: border-box;
+}
+
+.dashboard-indicator-card span,
+.dashboard-indicator-card small {
+  display: block;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.dashboard-indicator-card strong {
+  display: block;
+  margin: 10px 0 4px;
+  color: #0f172a;
+  font-size: 34px;
+  line-height: 1;
+  font-weight: 800;
+}
+
+.dashboard-task-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.dashboard-task-card {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid #d9e0ea;
+  border-radius: 8px;
+  background: #ffffff;
+  box-sizing: border-box;
+}
+
+.dashboard-task-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.dashboard-task-main > div {
+  min-width: 0;
+}
+
+.dashboard-task-main .secondary-button {
+  min-width: 112px;
+  flex: 0 0 auto;
+}
+
+.dashboard-task-code {
+  margin: 0 0 8px;
+  color: #0f172a;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #eef4ff;
+  color: #223c79;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.status-finalizada,
+.status-aprovado {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.status-aguardando_aprovacao,
+.status-contado {
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.status-recontagem,
+.status-recontar {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.dashboard-task-meta {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 16px 0 0;
+}
+
+.dashboard-task-meta div {
+  min-width: 0;
+}
+
+.dashboard-task-meta dt {
+  margin: 0 0 4px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.dashboard-task-meta dd {
+  margin: 0;
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.dashboard-progress {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.dashboard-progress > div:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.dashboard-progress strong {
+  color: #0f172a;
+  white-space: nowrap;
+}
+
+.dashboard-progress-track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e2e8f0;
+}
+
+.dashboard-progress-track span {
+  display: block;
+  height: 100%;
+  max-width: 100%;
+  border-radius: inherit;
+  background: #223c79;
+}
+
 .empty-state {
   display: flex;
   align-items: center;
@@ -473,6 +638,33 @@
     width: 100%;
   }
 
+  .dashboard-indicator-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .dashboard-indicator-card {
+    min-height: 108px;
+    padding: 15px;
+  }
+
+  .dashboard-indicator-card strong {
+    font-size: 28px;
+  }
+
+  .dashboard-task-list {
+    margin-top: 14px;
+  }
+
+  .dashboard-task-main {
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .dashboard-task-meta {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .empty-state {
     min-height: 96px;
     padding: 16px 14px;
@@ -535,5 +727,30 @@
   .secondary-button,
   .back-button {
     font-size: 13px;
+  }
+
+  .dashboard-indicator-grid,
+  .dashboard-task-meta {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-task-card {
+    padding: 14px 12px;
+  }
+
+  .dashboard-task-main {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .dashboard-task-main .secondary-button {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .dashboard-progress > div:first-child {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
   }
 }

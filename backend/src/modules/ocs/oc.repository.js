@@ -313,6 +313,146 @@ function createOcRepository(db = pool) {
       return result.rows;
     },
 
+    async listAdminDashboardRows({ empresaId }) {
+      const result = await db.query(
+        `SELECT ocs.id,
+                ocs.codigo,
+                ocs.gestor_id,
+                ocs.estoquista_id,
+                ocs.status,
+                ocs.empresa_id,
+                CASE
+                  WHEN COUNT(DISTINCT oc_produtos.id) > 0 THEN COUNT(DISTINCT oc_produtos.id)
+                  ELSE COUNT(DISTINCT oc_items.id)
+                END::int AS qtd,
+                COALESCE(latest_assignment_user.nome, estoquista.nome) AS responsavel_nome,
+                criador.nome AS criador_nome,
+                latest_assignment.id AS active_assignment_id,
+                latest_assignment.fase AS active_assignment_fase,
+                latest_assignment.status AS active_assignment_status,
+                EXISTS (
+                  SELECT 1
+                  FROM oc_items legacy_recount_items
+                  WHERE legacy_recount_items.oc_id = ocs.id
+                    AND legacy_recount_items.status = 'recontar'
+                ) AS has_legacy_recount,
+                empresas.codigo AS empresa_codigo,
+                empresas.nome AS empresa_nome,
+                NULLIF(
+                  GREATEST(
+                    COALESCE(MAX(contagens.created_at), '-infinity'::timestamptz),
+                    COALESCE(MAX(movement_assignments.created_at), '-infinity'::timestamptz),
+                    COALESCE(MAX(movement_assignments.finalizado_em), '-infinity'::timestamptz),
+                    COALESCE(ocs.created_at, '-infinity'::timestamptz),
+                    COALESCE(ocs.updated_at, '-infinity'::timestamptz)
+                  ),
+                  '-infinity'::timestamptz
+                ) AS ultima_movimentacao_em
+         FROM ocs
+         LEFT JOIN oc_items ON oc_items.oc_id = ocs.id
+         LEFT JOIN oc_produtos ON oc_produtos.oc_id = ocs.id
+         LEFT JOIN contagens ON contagens.oc_id = ocs.id
+         LEFT JOIN oc_assignments movement_assignments ON movement_assignments.oc_id = ocs.id
+         LEFT JOIN LATERAL (
+           SELECT assignments.id, assignments.estoquista_id, assignments.fase, assignments.status
+           FROM oc_assignments assignments
+           WHERE assignments.oc_id = ocs.id
+             AND assignments.status = 'ativo'
+           ORDER BY assignments.ciclo DESC, assignments.id DESC
+           LIMIT 1
+         ) latest_assignment ON true
+         LEFT JOIN users latest_assignment_user ON latest_assignment_user.id = latest_assignment.estoquista_id
+         LEFT JOIN users criador ON criador.id = ocs.gestor_id
+         LEFT JOIN users estoquista ON estoquista.id = ocs.estoquista_id
+         LEFT JOIN empresas ON empresas.id = ocs.empresa_id
+         WHERE ocs.empresa_id = $1
+         GROUP BY ocs.id,
+                  latest_assignment.id,
+                  latest_assignment.fase,
+                  latest_assignment.status,
+                  latest_assignment_user.nome,
+                  criador.nome,
+                  estoquista.nome,
+                  empresas.codigo,
+                  empresas.nome
+         ORDER BY ocs.id DESC`,
+        [empresaId]
+      );
+
+      return result.rows;
+    },
+
+    async listEstoquistaDashboardRows({ estoquistaId, empresaId, itemStatus, ocStatus }) {
+      const result = await db.query(
+        `SELECT ocs.id,
+                ocs.codigo,
+                ocs.status,
+                ocs.empresa_id,
+                CASE
+                  WHEN COUNT(DISTINCT oc_localizacoes.id) > 0 THEN COUNT(DISTINCT oc_localizacoes.id)
+                  ELSE COUNT(oc_items.id) FILTER (WHERE oc_items.status <> $2)
+                END::int AS qtd,
+                CASE
+                  WHEN COUNT(DISTINCT oc_localizacoes.id) > 0 THEN COUNT(DISTINCT active_counts.id)
+                  ELSE COUNT(oc_items.id) FILTER (WHERE oc_items.status = $3)
+                END::int AS qtd_contados,
+                empresas.codigo AS empresa_codigo,
+                empresas.nome AS empresa_nome,
+                NULLIF(
+                  GREATEST(
+                    COALESCE(MAX(active_counts.created_at), '-infinity'::timestamptz),
+                    COALESCE(MAX(legacy_counts.created_at), '-infinity'::timestamptz),
+                    COALESCE(MAX(oc_assignments.created_at), '-infinity'::timestamptz),
+                    COALESCE(ocs.created_at, '-infinity'::timestamptz),
+                    COALESCE(ocs.updated_at, '-infinity'::timestamptz)
+                  ),
+                  '-infinity'::timestamptz
+                ) AS ultima_movimentacao_em
+         FROM ocs
+         LEFT JOIN oc_items ON oc_items.oc_id = ocs.id
+         LEFT JOIN oc_assignments ON oc_assignments.oc_id = ocs.id
+          AND oc_assignments.status = 'ativo'
+         LEFT JOIN oc_produtos ON oc_produtos.oc_id = ocs.id
+         LEFT JOIN oc_assignment_produtos ON oc_assignment_produtos.assignment_id = oc_assignments.id
+          AND oc_assignment_produtos.oc_produto_id = oc_produtos.id
+         LEFT JOIN oc_localizacoes ON oc_localizacoes.oc_produto_id = oc_produtos.id
+          AND (
+            oc_assignments.id IS NULL
+            OR oc_assignment_produtos.oc_produto_id IS NOT NULL
+          )
+         LEFT JOIN contagens active_counts ON active_counts.assignment_id = oc_assignments.id
+          AND active_counts.oc_localizacao_id = oc_localizacoes.id
+         LEFT JOIN contagens legacy_counts ON legacy_counts.oc_id = ocs.id
+          AND legacy_counts.item_id = oc_items.id
+         LEFT JOIN empresas ON empresas.id = ocs.empresa_id
+         WHERE (
+             (
+               EXISTS (SELECT 1 FROM oc_produtos model_check WHERE model_check.oc_id = ocs.id)
+               AND oc_assignments.estoquista_id = $1
+             )
+             OR (
+               NOT EXISTS (SELECT 1 FROM oc_produtos model_check WHERE model_check.oc_id = ocs.id)
+               AND ocs.estoquista_id = $1
+             )
+           )
+           AND ocs.empresa_id = $4
+           AND COALESCE(ocs.status, $5) NOT IN ($6, $7)
+         GROUP BY ocs.id, empresas.codigo, empresas.nome
+         ORDER BY ultima_movimentacao_em DESC NULLS LAST, ocs.id DESC`,
+        [
+          estoquistaId,
+          itemStatus.approved,
+          itemStatus.counted,
+          empresaId,
+          ocStatus.open,
+          ocStatus.waitingApproval,
+          ocStatus.finalized
+        ]
+      );
+
+      return result.rows;
+    },
+
     async listApprovalForAdmin({ empresaId, openStatus, waitingApprovalStatus }) {
       const result = await db.query(
         `SELECT ocs.*,

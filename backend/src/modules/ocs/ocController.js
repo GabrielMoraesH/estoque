@@ -14,6 +14,14 @@ function createOcController({ service = ocService } = {}) {
       res.json(result);
     }),
 
+    dashboard: asyncHandler(async (req, res) => {
+      const result = await service.getDashboardSummary({
+        user: req.user,
+        empresaId: req.empresaId
+      });
+      res.json(result);
+    }),
+
     listMyGestorOcs: asyncHandler(async (req, res) => {
       const result = await service.listMyGestorOcs({
         user: req.user,

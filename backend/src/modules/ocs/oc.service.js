@@ -624,6 +624,130 @@ function createOcService({ repository, audit = noopAudit } = {}) {
     });
   }
 
+  function isRecountDashboardRow(row) {
+    return row?.active_assignment_status === ASSIGNMENT_STATUS.ACTIVE
+      && row?.active_assignment_fase === 'recontagem'
+      || row?.has_legacy_recount === true;
+  }
+
+  function toInteger(value) {
+    const numberValue = Number(value);
+    return Number.isFinite(numberValue) ? numberValue : 0;
+  }
+
+  function toAdminDashboardTask(row, actionReason) {
+    return {
+      id: row.id,
+      codigo: row.codigo,
+      empresa_id: row.empresa_id,
+      empresa_codigo: row.empresa_codigo || null,
+      empresa_nome: row.empresa_nome || null,
+      status: row.status || OC_STATUS.OPEN,
+      quantidade_produtos: toInteger(row.qtd),
+      responsavel_nome: row.responsavel_nome || null,
+      ultima_movimentacao_em: row.ultima_movimentacao_em || null,
+      action_reason: actionReason,
+      action_to: '/aprovacao'
+    };
+  }
+
+  function toEstoquistaDashboardTask(row) {
+    const total = toInteger(row.qtd);
+    const counted = toInteger(row.qtd_contados);
+
+    return {
+      id: row.id,
+      codigo: row.codigo,
+      empresa_id: row.empresa_id,
+      empresa_codigo: row.empresa_codigo || null,
+      empresa_nome: row.empresa_nome || null,
+      status: row.status || OC_STATUS.OPEN,
+      total_localizacoes: total,
+      localizacoes_contadas: counted,
+      progresso_percentual: total > 0 ? Math.round((counted / total) * 100) : 0,
+      pronta_para_finalizar: total > 0 && counted >= total,
+      ultima_movimentacao_em: row.ultima_movimentacao_em || null,
+      action_to: `/oc/${row.id}`
+    };
+  }
+
+  async function getDashboardSummary({ user, empresaId }) {
+    if (isAdmin(user) || isGestor(user)) {
+      const rows = await repository.listAdminDashboardRows({ empresaId });
+      const decisionRows = isAdmin(user)
+        ? rows
+        : rows.filter((row) => Number(row.gestor_id) === Number(user.id));
+      const waitingRows = rows.filter((row) => (row.status || OC_STATUS.OPEN) === OC_STATUS.WAITING_APPROVAL);
+      const decisionWaitingRows = decisionRows.filter(
+        (row) => (row.status || OC_STATUS.OPEN) === OC_STATUS.WAITING_APPROVAL
+      );
+      const attention = decisionWaitingRows
+        .map((row) => toAdminDashboardTask(
+          row,
+          row.active_assignment_fase === 'recontagem'
+            ? 'recontagem_concluida'
+            : 'aguardando_aprovacao'
+        ))
+        .slice(0, 5);
+
+      return {
+        perfil: user.role,
+        tipo: 'administrativo',
+        status_mapping: {
+          total: ['*'],
+          em_contagem: [OC_STATUS.OPEN],
+          aguardando_aprovacao: [OC_STATUS.WAITING_APPROVAL],
+          em_recontagem: ['oc_assignments.status=ativo AND oc_assignments.fase=recontagem', 'oc_items.status=recontar'],
+          finalizadas: [OC_STATUS.FINALIZED]
+        },
+        indicadores: {
+          total_ocs: rows.length,
+          em_contagem: rows.filter(
+            (row) => (row.status || OC_STATUS.OPEN) === OC_STATUS.OPEN && !isRecountDashboardRow(row)
+          ).length,
+          aguardando_aprovacao: decisionWaitingRows.length,
+          em_recontagem: rows.filter(isRecountDashboardRow).length,
+          finalizadas: rows.filter((row) => row.status === OC_STATUS.FINALIZED).length
+        },
+        total_filial_ocs: rows.length,
+        aguardando_aprovacao_filial: waitingRows.length,
+        atencao_necessaria: attention
+      };
+    }
+
+    if (!isEstoquista(user)) {
+      throw forbidden('Voce nao tem permissao para acessar o dashboard');
+    }
+
+    const rows = await repository.listEstoquistaDashboardRows({
+      estoquistaId: user.id,
+      empresaId,
+      itemStatus: {
+        approved: ITEM_STATUS.APPROVED,
+        counted: ITEM_STATUS.COUNTED
+      },
+      ocStatus: {
+        open: OC_STATUS.OPEN,
+        waitingApproval: OC_STATUS.WAITING_APPROVAL,
+        finalized: OC_STATUS.FINALIZED
+      }
+    });
+    const tasks = rows.map(toEstoquistaDashboardTask);
+
+    return {
+      perfil: user.role,
+      tipo: 'estoquista',
+      indicadores: {
+        ocs_atribuidas: tasks.length,
+        ocs_em_andamento: tasks.filter(
+          (task) => task.localizacoes_contadas > 0 && task.localizacoes_contadas < task.total_localizacoes
+        ).length,
+        prontas_para_finalizar: tasks.filter((task) => task.pronta_para_finalizar).length
+      },
+      proximas_ocs: tasks.slice(0, 5)
+    };
+  }
+
   async function listMyEstoquistaOcs({ user, empresaId }) {
     if (!isEstoquista(user)) {
       throw forbidden('Voce nao tem permissao para acessar esta listagem');
@@ -1217,6 +1341,7 @@ function createOcService({ repository, audit = noopAudit } = {}) {
     listOcsByGestor,
     listMyEstoquistaOcs,
     listOcsByEstoquista,
+    getDashboardSummary,
     listApprovalForAdmin,
     listMyApprovalOcs,
     listApprovalForGestor,

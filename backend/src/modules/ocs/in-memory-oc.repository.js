@@ -416,6 +416,95 @@ function createInMemoryOcRepository({
           .sort((a, b) => Number(b.id) - Number(a.id));
       },
 
+      async listAdminDashboardRows({ empresaId }) {
+        return currentState.ocs
+          .filter((oc) => Number(oc.empresa_id) === Number(empresaId))
+          .map((oc) => {
+            const ocItems = currentState.items.filter((item) => Number(item.oc_id) === Number(oc.id));
+            const products = currentState.ocProdutos.filter((item) => Number(item.oc_id) === Number(oc.id));
+            const activeAssignment = currentState.ocAssignments
+              .filter((assignment) => Number(assignment.oc_id) === Number(oc.id) && assignment.status === 'ativo')
+              .sort((a, b) => Number(b.ciclo) - Number(a.ciclo) || Number(b.id) - Number(a.id))[0] || null;
+            const movementDates = [
+              oc.created_at,
+              oc.updated_at,
+              ...currentState.counts
+                .filter((count) => Number(count.oc_id) === Number(oc.id))
+                .map((count) => count.created_at),
+              ...currentState.ocAssignments
+                .filter((assignment) => Number(assignment.oc_id) === Number(oc.id))
+                .flatMap((assignment) => [assignment.created_at, assignment.finalizado_em])
+            ]
+              .filter(Boolean)
+              .sort();
+            const responsavel = currentState.users.find(
+              (user) => Number(user.id) === Number(activeAssignment?.estoquista_id || oc.estoquista_id)
+            );
+            const criador = currentState.users.find((user) => Number(user.id) === Number(oc.gestor_id));
+
+            return {
+              id: oc.id,
+              codigo: oc.codigo,
+              gestor_id: oc.gestor_id,
+              estoquista_id: oc.estoquista_id,
+              status: oc.status,
+              empresa_id: oc.empresa_id,
+              qtd: products.length > 0 ? products.length : ocItems.length,
+              responsavel_nome: responsavel?.nome || null,
+              criador_nome: criador?.nome || null,
+              active_assignment_id: activeAssignment?.id || null,
+              active_assignment_fase: activeAssignment?.fase || null,
+              active_assignment_status: activeAssignment?.status || null,
+              has_legacy_recount: ocItems.some((item) => item.status === 'recontar'),
+              empresa_codigo: oc.empresa_codigo || null,
+              empresa_nome: oc.empresa_nome || null,
+              ultima_movimentacao_em: movementDates.at(-1) || null
+            };
+          })
+          .sort((a, b) => Number(b.id) - Number(a.id));
+      },
+
+      async listEstoquistaDashboardRows({ estoquistaId, empresaId, itemStatus, ocStatus }) {
+        const rows = await repository.listByEstoquista({
+          estoquistaId,
+          empresaId,
+          itemStatus,
+          ocStatus
+        });
+
+        return rows.map((oc) => {
+          const activeAssignment = currentState.ocAssignments
+            .filter((assignment) => Number(assignment.oc_id) === Number(oc.id) && assignment.status === 'ativo')
+            .sort((a, b) => Number(b.ciclo) - Number(a.ciclo) || Number(b.id) - Number(a.id))[0] || null;
+          const movementDates = [
+            oc.created_at,
+            oc.updated_at,
+            activeAssignment?.created_at,
+            ...currentState.counts
+              .filter((count) => Number(count.oc_id) === Number(oc.id))
+              .filter((count) => !activeAssignment || Number(count.assignment_id) === Number(activeAssignment.id))
+              .map((count) => count.created_at)
+          ]
+            .filter(Boolean)
+            .sort();
+
+          return {
+            id: oc.id,
+            codigo: oc.codigo,
+            status: oc.status,
+            empresa_id: oc.empresa_id,
+            qtd: oc.qtd,
+            qtd_contados: oc.qtd_contados,
+            empresa_codigo: oc.empresa_codigo || null,
+            empresa_nome: oc.empresa_nome || null,
+            ultima_movimentacao_em: movementDates.at(-1) || null
+          };
+        }).sort((a, b) => {
+          const dateDiff = new Date(b.ultima_movimentacao_em || 0) - new Date(a.ultima_movimentacao_em || 0);
+          return dateDiff || Number(b.id) - Number(a.id);
+        });
+      },
+
       async listApprovalForAdmin({ empresaId, openStatus, waitingApprovalStatus }) {
         return listApproval({
           currentState,

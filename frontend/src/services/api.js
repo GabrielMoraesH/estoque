@@ -258,6 +258,12 @@ export async function getOCsForApproval({ role } = {}) {
   });
 }
 
+export async function getDashboardSummary() {
+  return requestJson("/ocs/dashboard", {
+    authenticated: true
+  });
+}
+
 export async function getUsers() {
   return requestJson("/users", {
     authenticated: true

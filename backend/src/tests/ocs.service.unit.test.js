@@ -18,6 +18,8 @@ function createRepositoryMock(overrides = {}) {
     createItem: jest.fn(),
     listByGestor: jest.fn(),
     listByEstoquista: jest.fn(),
+    listAdminDashboardRows: jest.fn(),
+    listEstoquistaDashboardRows: jest.fn(),
     listApprovalForAdmin: jest.fn(),
     listApprovalForGestor: jest.fn(),
     approveItems: jest.fn(),
@@ -2064,6 +2066,303 @@ describe('OcService unitario com repository mockado', () => {
       novoEstoquistaId: 33
     });
     expect(repository.__getState().ocAssignments.at(-1)).toMatchObject({ ciclo: 3, fase: 'recontagem' });
+  });
+
+  it('dashboard admin resume somente OCs da empresa ativa e identifica recontagem', async () => {
+    const repository = createInMemoryOcRepository({
+      users: [
+        { id: 1, nome: 'Admin', role: 'admin' },
+        { id: 11, nome: 'Gestor A', role: 'gestor' },
+        { id: 22, nome: 'Estoquista A', role: 'estoquista' },
+        { id: 33, nome: 'Estoquista B', role: 'estoquista' }
+      ],
+      ocs: [
+        { id: 10, codigo: 'OC-00010', gestor_id: 11, estoquista_id: 22, empresa_id: 1, status: OC_STATUS.OPEN },
+        { id: 11, codigo: 'OC-00011', gestor_id: 11, estoquista_id: 22, empresa_id: 1, status: OC_STATUS.WAITING_APPROVAL },
+        { id: 12, codigo: 'OC-00012', gestor_id: 11, estoquista_id: 22, empresa_id: 1, status: OC_STATUS.OPEN },
+        { id: 13, codigo: 'OC-00013', gestor_id: 11, estoquista_id: 22, empresa_id: 1, status: OC_STATUS.FINALIZED },
+        { id: 20, codigo: 'OC-00020', gestor_id: 11, estoquista_id: 22, empresa_id: 2, status: OC_STATUS.WAITING_APPROVAL }
+      ],
+      items: [
+        { id: 100, oc_id: 10, status: ITEM_STATUS.PENDING },
+        { id: 110, oc_id: 11, status: ITEM_STATUS.COUNTED },
+        { id: 130, oc_id: 13, status: ITEM_STATUS.APPROVED },
+        { id: 200, oc_id: 20, status: ITEM_STATUS.COUNTED }
+      ],
+      ocProdutos: [
+        { id: 120, oc_id: 12, descricao_snapshot: 'Produto R', status: ITEM_STATUS.COUNTED }
+      ],
+      ocAssignments: [
+        { id: 1, oc_id: 12, ciclo: 2, fase: 'recontagem', estoquista_id: 33, status: 'ativo' }
+      ]
+    });
+    const { service } = createService({ repository });
+
+    const result = await service.getDashboardSummary({
+      user: admin,
+      empresaId: 1
+    });
+
+    expect(result.indicadores).toEqual({
+      total_ocs: 4,
+      em_contagem: 1,
+      aguardando_aprovacao: 1,
+      em_recontagem: 1,
+      finalizadas: 1
+    });
+    expect(result.atencao_necessaria).toHaveLength(1);
+    expect(result.atencao_necessaria[0]).toMatchObject({
+      id: 11,
+      status: OC_STATUS.WAITING_APPROVAL,
+      action_to: '/aprovacao'
+    });
+  });
+
+  it('dashboard gestor mostra decisao apenas das OCs que ele pode aprovar', async () => {
+    const repository = createInMemoryOcRepository({
+      users: [
+        { id: 11, nome: 'Gestor A', role: 'gestor' },
+        { id: 12, nome: 'Gestor B', role: 'gestor' },
+        { id: 22, nome: 'Estoquista', role: 'estoquista' }
+      ],
+      ocs: [
+        { id: 10, codigo: 'OC-00010', gestor_id: 11, estoquista_id: 22, empresa_id: 1, status: OC_STATUS.WAITING_APPROVAL },
+        { id: 11, codigo: 'OC-00011', gestor_id: 12, estoquista_id: 22, empresa_id: 1, status: OC_STATUS.WAITING_APPROVAL }
+      ],
+      items: [
+        { id: 100, oc_id: 10, status: ITEM_STATUS.COUNTED },
+        { id: 110, oc_id: 11, status: ITEM_STATUS.COUNTED }
+      ]
+    });
+    const { service } = createService({ repository });
+
+    const result = await service.getDashboardSummary({
+      user: gestor,
+      empresaId: 1
+    });
+
+    expect(result.indicadores.total_ocs).toBe(2);
+    expect(result.indicadores.aguardando_aprovacao).toBe(1);
+    expect(result.aguardando_aprovacao_filial).toBe(2);
+    expect(result.atencao_necessaria.map((item) => item.id)).toEqual([10]);
+  });
+
+  it('dashboard estoquista retorna somente tarefas proprias e sem campos sensiveis', async () => {
+    const repository = createInMemoryOcRepository({
+      users: [
+        { id: 22, nome: 'Estoquista A', role: 'estoquista', nivel_estoquista: 1 },
+        { id: 23, nome: 'Estoquista B', role: 'estoquista', nivel_estoquista: 1 }
+      ],
+      ocs: [
+        { id: 10, codigo: 'OC-00010', gestor_id: 11, estoquista_id: 22, empresa_id: 1, status: OC_STATUS.OPEN },
+        { id: 11, codigo: 'OC-00011', gestor_id: 11, estoquista_id: 23, empresa_id: 1, status: OC_STATUS.OPEN },
+        { id: 20, codigo: 'OC-00020', gestor_id: 11, estoquista_id: 22, empresa_id: 2, status: OC_STATUS.OPEN }
+      ],
+      items: [
+        { id: 100, oc_id: 10, saldo_sistema: 99, diferenca: 1, status: ITEM_STATUS.COUNTED },
+        { id: 101, oc_id: 10, saldo_sistema: 50, diferenca: null, status: ITEM_STATUS.PENDING },
+        { id: 110, oc_id: 11, status: ITEM_STATUS.PENDING },
+        { id: 200, oc_id: 20, status: ITEM_STATUS.PENDING }
+      ]
+    });
+    const { service } = createService({ repository });
+
+    const result = await service.getDashboardSummary({
+      user: estoquista,
+      empresaId: 1
+    });
+
+    expect(result.indicadores).toEqual({
+      ocs_atribuidas: 1,
+      ocs_em_andamento: 1,
+      prontas_para_finalizar: 0
+    });
+    expect(result.proximas_ocs).toHaveLength(1);
+    expect(result.proximas_ocs[0]).toMatchObject({
+      id: 10,
+      total_localizacoes: 2,
+      localizacoes_contadas: 1,
+      action_to: '/oc/10'
+    });
+    expect(JSON.stringify(result)).not.toContain('saldo_sistema');
+    expect(JSON.stringify(result)).not.toContain('diferenca');
+  });
+
+  it('dashboard estoquista classifica progresso 0/N, parcial e N/N', async () => {
+    const locations = [];
+    const counts = [];
+    const ocProdutos = [];
+    const ocAssignments = [];
+
+    [0, 1, 3, 4].forEach((counted, index) => {
+      const ocId = 80 + index;
+      const produtoId = 800 + index;
+      const assignmentId = 900 + index;
+
+      ocProdutos.push({ id: produtoId, oc_id: ocId, descricao_snapshot: `Produto ${index}`, status: ITEM_STATUS.PENDING });
+      ocAssignments.push({ id: assignmentId, oc_id: ocId, ciclo: 1, fase: 'contagem', estoquista_id: 22, status: 'ativo' });
+
+      for (let localIndex = 0; localIndex < 4; localIndex += 1) {
+        const locationId = 1000 + index * 10 + localIndex;
+        locations.push({ id: locationId, oc_produto_id: produtoId, status: ITEM_STATUS.PENDING });
+
+        if (localIndex < counted) {
+          counts.push({
+            id: 2000 + index * 10 + localIndex,
+            oc_id: ocId,
+            oc_produto_id: produtoId,
+            oc_localizacao_id: locationId,
+            assignment_id: assignmentId,
+            user_id: 22
+          });
+        }
+      }
+    });
+
+    const repository = createInMemoryOcRepository({
+      users: [{ id: 22, nome: 'Estoquista A', role: 'estoquista', nivel_estoquista: 1 }],
+      ocs: [0, 1, 2, 3].map((index) => ({
+        id: 80 + index,
+        codigo: `OC-0008${index}`,
+        gestor_id: 11,
+        estoquista_id: 22,
+        empresa_id: 1,
+        status: OC_STATUS.OPEN
+      })),
+      ocProdutos,
+      ocLocalizacoes: locations,
+      ocAssignments,
+      ocAssignmentProdutos: ocAssignments.map((assignment, index) => ({
+        assignment_id: assignment.id,
+        oc_id: assignment.oc_id,
+        oc_produto_id: ocProdutos[index].id
+      })),
+      counts
+    });
+    const { service } = createService({ repository });
+
+    const result = await service.getDashboardSummary({
+      user: estoquista,
+      empresaId: 1
+    });
+
+    expect(result.indicadores).toEqual({
+      ocs_atribuidas: 4,
+      ocs_em_andamento: 2,
+      prontas_para_finalizar: 1
+    });
+    expect(result.proximas_ocs).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 80, total_localizacoes: 4, localizacoes_contadas: 0, pronta_para_finalizar: false }),
+      expect.objectContaining({ id: 81, total_localizacoes: 4, localizacoes_contadas: 1, pronta_para_finalizar: false }),
+      expect.objectContaining({ id: 82, total_localizacoes: 4, localizacoes_contadas: 3, pronta_para_finalizar: false }),
+      expect.objectContaining({ id: 83, total_localizacoes: 4, localizacoes_contadas: 4, pronta_para_finalizar: true })
+    ]));
+  });
+
+  it('dashboard estoquista calcula recontagem parcial somente com produtos do assignment ativo', async () => {
+    const repository = createInMemoryOcRepository({
+      users: [
+        { id: 33, nome: 'Recontador', role: 'estoquista', nivel_estoquista: 2 }
+      ],
+      ocs: [
+        { id: 90, codigo: 'OC-00090', gestor_id: 11, estoquista_id: 22, empresa_id: 1, status: OC_STATUS.OPEN }
+      ],
+      ocProdutos: [
+        { id: 900, oc_id: 90, descricao_snapshot: 'Produto A', status: ITEM_STATUS.COUNTED },
+        { id: 901, oc_id: 90, descricao_snapshot: 'Produto B', status: ITEM_STATUS.COUNTED },
+        { id: 902, oc_id: 90, descricao_snapshot: 'Produto C', status: ITEM_STATUS.COUNTED },
+        { id: 903, oc_id: 90, descricao_snapshot: 'Produto D', status: ITEM_STATUS.COUNTED }
+      ],
+      ocLocalizacoes: [
+        { id: 910, oc_produto_id: 900, status: ITEM_STATUS.COUNTED },
+        { id: 911, oc_produto_id: 901, status: ITEM_STATUS.COUNTED },
+        { id: 912, oc_produto_id: 901, status: ITEM_STATUS.COUNTED },
+        { id: 913, oc_produto_id: 902, status: ITEM_STATUS.COUNTED },
+        { id: 914, oc_produto_id: 903, status: ITEM_STATUS.COUNTED },
+        { id: 915, oc_produto_id: 903, status: ITEM_STATUS.COUNTED },
+        { id: 916, oc_produto_id: 903, status: ITEM_STATUS.COUNTED }
+      ],
+      ocAssignments: [
+        { id: 990, oc_id: 90, ciclo: 2, fase: 'recontagem', estoquista_id: 33, status: 'ativo' }
+      ],
+      ocAssignmentProdutos: [
+        { assignment_id: 990, oc_id: 90, oc_produto_id: 901 },
+        { assignment_id: 990, oc_id: 90, oc_produto_id: 903 }
+      ],
+      counts: [
+        { id: 1, oc_id: 90, oc_produto_id: 900, oc_localizacao_id: 910, assignment_id: 989, user_id: 22 },
+        { id: 2, oc_id: 90, oc_produto_id: 901, oc_localizacao_id: 911, assignment_id: 990, user_id: 33 },
+        { id: 3, oc_id: 90, oc_produto_id: 903, oc_localizacao_id: 914, assignment_id: 990, user_id: 33 },
+        { id: 4, oc_id: 90, oc_produto_id: 902, oc_localizacao_id: 913, assignment_id: 989, user_id: 22 }
+      ]
+    });
+    const { service } = createService({ repository });
+
+    const result = await service.getDashboardSummary({
+      user: { id: 33, role: 'estoquista' },
+      empresaId: 1
+    });
+
+    expect(result.indicadores).toEqual({
+      ocs_atribuidas: 1,
+      ocs_em_andamento: 1,
+      prontas_para_finalizar: 0
+    });
+    expect(result.proximas_ocs[0]).toMatchObject({
+      id: 90,
+      total_localizacoes: 5,
+      localizacoes_contadas: 2,
+      progresso_percentual: 40,
+      pronta_para_finalizar: false
+    });
+    expect(JSON.stringify(result)).not.toContain('recontagem');
+  });
+
+  it('dashboard estoquista calcula pronta para finalizar no assignment ativo do modelo novo', async () => {
+    const repository = createInMemoryOcRepository({
+      users: [
+        { id: 33, nome: 'Recontador', role: 'estoquista', nivel_estoquista: 2 }
+      ],
+      ocs: [
+        { id: 70, codigo: 'OC-00070', gestor_id: 11, estoquista_id: 22, empresa_id: 1, status: OC_STATUS.OPEN }
+      ],
+      ocProdutos: [
+        { id: 700, oc_id: 70, descricao_snapshot: 'Produto A', status: ITEM_STATUS.COUNTED }
+      ],
+      ocLocalizacoes: [
+        { id: 800, oc_produto_id: 700, status: ITEM_STATUS.COUNTED },
+        { id: 801, oc_produto_id: 700, status: ITEM_STATUS.COUNTED }
+      ],
+      ocAssignments: [
+        { id: 900, oc_id: 70, ciclo: 2, fase: 'recontagem', estoquista_id: 33, status: 'ativo' }
+      ],
+      ocAssignmentProdutos: [
+        { assignment_id: 900, oc_id: 70, oc_produto_id: 700 }
+      ],
+      counts: [
+        { id: 1, oc_id: 70, oc_produto_id: 700, oc_localizacao_id: 800, assignment_id: 900, user_id: 33 },
+        { id: 2, oc_id: 70, oc_produto_id: 700, oc_localizacao_id: 801, assignment_id: 900, user_id: 33 }
+      ]
+    });
+    const { service } = createService({ repository });
+
+    const result = await service.getDashboardSummary({
+      user: { id: 33, role: 'estoquista' },
+      empresaId: 1
+    });
+
+    expect(result.indicadores).toEqual({
+      ocs_atribuidas: 1,
+      ocs_em_andamento: 0,
+      prontas_para_finalizar: 1
+    });
+    expect(result.proximas_ocs[0]).toMatchObject({
+      id: 70,
+      total_localizacoes: 2,
+      localizacoes_contadas: 2,
+      pronta_para_finalizar: true
+    });
+    expect(JSON.stringify(result)).not.toContain('recontagem');
   });
 
   it.each([
