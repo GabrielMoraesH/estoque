@@ -312,7 +312,8 @@ const openApiDefinition = {
       },
       CountRequest: {
         type: 'object',
-        required: ['oc_id', 'item_id', 'quantidade', 'lote'],
+        required: ['oc_id', 'quantidade', 'lote'],
+        description: 'Use oc_localizacao_id para OCs do modelo novo. Use item_id apenas para compatibilidade com OCs legadas.',
         properties: {
           oc_id: {
             type: 'integer',
@@ -320,7 +321,13 @@ const openApiDefinition = {
           },
           item_id: {
             type: 'integer',
+            description: 'Identificador legado de oc_items. Mantido para contagem de OCs antigas.',
             example: 25
+          },
+          oc_localizacao_id: {
+            type: 'integer',
+            description: 'Identificador da localizacao da OC no modelo novo.',
+            example: 120
           },
           quantidade: {
             type: 'number',
@@ -345,7 +352,13 @@ const openApiDefinition = {
           },
           item_id: {
             type: 'integer',
+            nullable: true,
             example: 25
+          },
+          oc_localizacao_id: {
+            type: 'integer',
+            nullable: true,
+            example: 120
           },
           quantidade: {
             type: 'number',
