@@ -1115,6 +1115,78 @@ describe('OcService unitario com repository mockado', () => {
     expect(state.ocLocalizacoes.map((item) => item.endereco_snapshot)).not.toContain('Z9-99-99');
   });
 
+  it('cria OC com o payload enviado por GerarOC apos normalizar identificadores do mock', async () => {
+    const repository = createInMemoryOcRepository({
+      users: [
+        { id: 11, nome: 'Gestor', role: 'gestor', empresas: [{ id: 1 }] },
+        { id: 22, nome: 'Estoquista Nivel 1', role: 'estoquista', nivel_estoquista: 1, ativo: true, empresas: [{ id: 1 }] }
+      ]
+    });
+    const { service } = createService({ repository });
+
+    const oc = await service.createOcWithItems({
+      user: gestor,
+      empresaId: 1,
+      payload: {
+        estoquista_id: '22',
+        items: [
+          {
+            produto_externo_id: '',
+            produto: 'Dipirona 500mg',
+            saldo_sistema: 60,
+            localizacao_externa_id: '1',
+            endereco: 'A1-01-02',
+            codigo: '789123',
+            codigo_barras: '789123456789',
+            validade: '12/2026'
+          },
+          {
+            produto_externo_id: '',
+            produto: 'Dipirona 500mg',
+            saldo_sistema: 60,
+            localizacao_externa_id: '2',
+            endereco: 'A1-02-01',
+            codigo: '789123',
+            codigo_barras: '789123456780',
+            validade: '12/2026'
+          },
+          {
+            produto_externo_id: '',
+            produto: 'Amoxicilina 500mg',
+            saldo_sistema: 50,
+            localizacao_externa_id: '3',
+            endereco: 'B2-03-01',
+            codigo: '456789',
+            codigo_barras: '456789123456',
+            validade: '08/2025'
+          }
+        ]
+      }
+    });
+    const state = repository.__getState();
+
+    expect(oc.qtd).toBe(2);
+    expect(state.ocs).toHaveLength(1);
+    expect(state.ocProdutos).toHaveLength(2);
+    expect(state.ocLocalizacoes).toHaveLength(3);
+    expect(state.ocAssignments).toHaveLength(1);
+    expect(state.ocAssignmentProdutos).toHaveLength(2);
+    expect(state.items).toHaveLength(0);
+    expect(state.ocAssignments[0]).toMatchObject({
+      oc_id: oc.id,
+      ciclo: 1,
+      fase: 'contagem',
+      status: 'ativo',
+      estoquista_id: 22
+    });
+    expect(state.ocLocalizacoes.map((item) => item.localizacao_externa_id)).toEqual(['1', '2', '3']);
+    expect(state.ocLocalizacoes.map((item) => item.validade_snapshot)).toEqual([
+      '2026-12-01',
+      '2026-12-01',
+      '2025-08-01'
+    ]);
+  });
+
   it('faz rollback completo se uma localizacao falhar', async () => {
     const repository = createInMemoryOcRepository({
       users: [

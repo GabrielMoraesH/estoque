@@ -31,6 +31,17 @@ function hasEmpresaAccess(estoquista, empresaId) {
   return empresas.some((empresa) => Number(empresa?.id ?? empresa) === Number(empresaId));
 }
 
+function getGenerateOcErrorMessage(error) {
+  const errorMessage = getFeedbackErrorMessage(error, feedbackMessages.oc.generateError);
+  const errorCode = error?.data?.error?.code;
+
+  if (errorCode === "VALIDATION_ERROR" && errorMessage === "Invalid request data") {
+    return "Não foi possível gerar a OC. Verifique os produtos selecionados.";
+  }
+
+  return errorMessage;
+}
+
 function GerarOC() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -188,7 +199,7 @@ function GerarOC() {
 
       showToast(feedbackMessages.oc.generateError, "error");
     } catch (error) {
-      showToast(getFeedbackErrorMessage(error, feedbackMessages.oc.generateError), "error");
+      showToast(getGenerateOcErrorMessage(error), "error");
     } finally {
       setGenerating(false);
     }

@@ -29,6 +29,11 @@ function firstValue(...values) {
   return values.find((value) => value !== undefined && value !== null && value !== "");
 }
 
+function optionalText(...values) {
+  const resolvedValue = firstValue(...values);
+  return resolvedValue === undefined ? undefined : String(resolvedValue).trim();
+}
+
 function normalizeText(value) {
   return String(value || "").trim().toLowerCase();
 }
@@ -54,8 +59,8 @@ export function normalizeProduto(rawProduto, index = 0) {
 
   return {
     id: firstValue(produto.id, produto.codigo_barras, produto.codigo, index + 1),
-    produto_externo_id: firstValue(produto.produto_externo_id, produto.produtoId, produto.produto_id, ""),
-    localizacao_externa_id: firstValue(
+    produto_externo_id: optionalText(produto.produto_externo_id, produto.produtoId, produto.produto_id),
+    localizacao_externa_id: optionalText(
       produto.localizacao_externa_id,
       produto.localizacaoId,
       produto.localizacao_id,
@@ -67,8 +72,8 @@ export function normalizeProduto(rawProduto, index = 0) {
       firstValue(produto.saldo_sistema, produto.saldoSistema, produto.saldo)
     ),
     endereco: resolveEndereco(produto),
-    codigo: firstValue(produto.codigo, ""),
-    codigo_barras: firstValue(
+    codigo: optionalText(produto.codigo),
+    codigo_barras: optionalText(
       produto.codigo_barras,
       produto.codigoBarras,
       produto.barcode,
