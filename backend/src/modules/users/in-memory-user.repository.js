@@ -160,15 +160,18 @@ function createInMemoryUserRepository({ users = [] } = {}) {
       return publicUserFrom(deletedUser);
     },
 
-    async listEstoquistas({ empresaId } = {}) {
+    async listEstoquistas({ empresaId, nivel } = {}) {
       return state
         .filter((user) => user.role === 'estoquista')
+        .filter((user) => user.ativo !== false)
+        .filter((user) => !nivel || Number(user.nivel_estoquista) === Number(nivel))
         .filter((user) => (
           !empresaId || user.empresas.some((empresa) => Number(empresa.id) === Number(empresaId))
         ))
         .map((user) => ({
           id: user.id,
           nome: user.nome,
+          ativo: user.ativo !== false,
           nivel_estoquista: user.nivel_estoquista ?? null,
           empresas: user.empresas.map((empresa) => ({ ...empresa }))
         }))

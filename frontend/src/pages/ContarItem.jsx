@@ -12,6 +12,19 @@ import usePermissions from "../hooks/usePermissions";
 import useOCs from "../hooks/useOCs";
 import { feedbackMessages, getFeedbackErrorMessage } from "../utils/feedbackMessages";
 
+function isValidCountQuantity(value) {
+  if (typeof value !== "string" || value.trim() === "") {
+    return false;
+  }
+
+  if (!/^\d+$/.test(value.trim())) {
+    return false;
+  }
+
+  const numberValue = Number(value);
+  return Number.isSafeInteger(numberValue) && numberValue >= 0;
+}
+
 function ContarItem() {
   const { ocId, itemId } = useParams();
   const navigate = useNavigate();
@@ -25,13 +38,21 @@ function ContarItem() {
   const [lote, setLote] = useState("");
   const [saving, setSaving] = useState(false);
   const [countTarget, setCountTarget] = useState(null);
+  const [quantityTouched, setQuantityTouched] = useState(false);
 
   useEffect(() => {
     setQuantidade("");
     setLote("");
     setSaving(false);
     setCountTarget(null);
+    setQuantityTouched(false);
   }, [activeEmpresa?.id, itemId, ocId]);
+
+  const isQuantidadeValida = isValidCountQuantity(quantidade);
+  const quantityError = quantityTouched && !isQuantidadeValida
+    ? "Informe uma quantidade inteira maior ou igual a zero."
+    : "";
+  const isSaveDisabled = saving || !isQuantidadeValida || !lote.trim();
 
   useEffect(() => {
     let isCurrentRequest = true;
@@ -90,7 +111,8 @@ function ContarItem() {
       return;
     }
 
-    if (!quantidade || !lote.trim()) {
+    if (!isQuantidadeValida || !lote.trim()) {
+      setQuantityTouched(true);
       showToast(feedbackMessages.count.requiredFields, "info");
       return;
     }
@@ -103,13 +125,13 @@ function ContarItem() {
         ? {
             oc_id: ocId,
             oc_localizacao_id: newModelLocationId,
-            quantidade,
+            quantidade: Number(quantidade),
             lote
           }
         : {
             oc_id: ocId,
             item_id: itemId,
-            quantidade,
+            quantidade: Number(quantidade),
             lote
           };
       const response = await saveItemCount({
@@ -120,6 +142,7 @@ function ContarItem() {
         showToast(feedbackMessages.count.saveSuccess);
         setQuantidade("");
         setLote("");
+        setQuantityTouched(false);
         navigate(`/oc/${ocId}`, {
           replace: true,
           state: {
@@ -146,6 +169,7 @@ function ContarItem() {
     navigate,
     ocId,
     quantidade,
+    isQuantidadeValida,
     lote,
     saveItemCount,
     saving,
@@ -184,12 +208,24 @@ function ContarItem() {
               <label htmlFor="quantidade">Quantidade</label>
               <input
                 id="quantidade"
+                type="number"
                 className="field-control"
                 placeholder="Informe a quantidade"
                 value={quantidade}
+                min={0}
+                step={1}
+                inputMode="numeric"
+                aria-invalid={Boolean(quantityError)}
+                aria-describedby={quantityError ? "quantidade-error" : undefined}
+                onBlur={() => setQuantityTouched(true)}
                 onChange={(e) => setQuantidade(e.target.value)}
                 disabled={saving}
               />
+              {quantityError && (
+                <p id="quantidade-error" className="counting-field-error">
+                  {quantityError}
+                </p>
+              )}
             </div>
 
             <div className="field-group">
@@ -206,7 +242,7 @@ function ContarItem() {
 
             <div className="counting-actions">
               {canCountOc && (
-                <button className="primary-button" type="submit" disabled={saving || !quantidade || !lote.trim()}>
+                <button className="primary-button" type="submit" disabled={isSaveDisabled}>
                   {saving ? "Salvando contagem..." : "Salvar contagem"}
                 </button>
               )}

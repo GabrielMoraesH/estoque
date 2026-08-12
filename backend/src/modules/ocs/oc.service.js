@@ -255,7 +255,7 @@ function createOcService({ repository, audit = noopAudit } = {}) {
       return;
     }
 
-    if (isGestor(user) && Number(oc.gestor_id) === Number(user.id)) {
+    if (isGestor(user)) {
       return;
     }
 
@@ -587,8 +587,8 @@ function createOcService({ repository, audit = noopAudit } = {}) {
     return { ...oc, qtd: groupedProducts.length };
   }
 
-  function listOcsByGestorInternal({ gestorId, empresaId }) {
-    return repository.listByGestor({ gestorId, empresaId });
+  function listOcsByGestorInternal({ empresaId }) {
+    return repository.listByGestor({ empresaId });
   }
 
   async function listMyGestorOcs({ user, empresaId }) {
@@ -596,7 +596,7 @@ function createOcService({ repository, audit = noopAudit } = {}) {
       throw forbidden('Voce nao tem permissao para acessar esta listagem');
     }
 
-    return listOcsByGestorInternal({ gestorId: user.id, empresaId });
+    return listOcsByGestorInternal({ empresaId });
   }
 
   async function listOcsByGestor({ user, gestorId, empresaId }) {
@@ -604,8 +604,8 @@ function createOcService({ repository, audit = noopAudit } = {}) {
       throw forbidden('Voce nao tem permissao para acessar esta listagem');
     }
 
-    assertSameUserOrAdmin(user, gestorId);
-    return listOcsByGestorInternal({ gestorId, empresaId });
+    void gestorId;
+    return listOcsByGestorInternal({ empresaId });
   }
 
   function listOcsByEstoquistaInternal({ estoquistaId, empresaId }) {

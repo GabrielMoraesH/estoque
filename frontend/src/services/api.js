@@ -227,8 +227,16 @@ export async function getOCsByEstoquista({ role, id } = {}) {
   });
 }
 
-export async function getEstoquistas() {
-  return requestJson("/users/estoquistas", {
+export async function getEstoquistas({ nivel } = {}) {
+  const params = new URLSearchParams();
+
+  if (nivel) {
+    params.set("nivel", String(nivel));
+  }
+
+  const query = params.toString();
+
+  return requestJson(`/users/estoquistas${query ? `?${query}` : ""}`, {
     authenticated: true
   });
 }

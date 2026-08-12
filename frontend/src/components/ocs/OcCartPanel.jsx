@@ -37,6 +37,7 @@ const CartItem = memo(function CartItem({ item, removingDisabled, onRemoveFromCa
 
 function OcCartPanel({
   estoquistas,
+  loadingEstoquistas,
   selectedEstoquista,
   onSelectEstoquista,
   cart,
@@ -47,7 +48,7 @@ function OcCartPanel({
 }) {
   const safeEstoquistas = getRenderableList(estoquistas);
   const safeCart = getRenderableList(cart);
-  const isGenerateDisabled = generating || safeCart.length === 0 || !selectedEstoquista;
+  const isGenerateDisabled = generating || loadingEstoquistas || safeCart.length === 0 || !selectedEstoquista;
 
   const handleSelectEstoquista = useCallback(
     (e) => onSelectEstoquista(e.target.value),
@@ -68,15 +69,22 @@ function OcCartPanel({
           className="field-control"
           value={selectedEstoquista}
           onChange={handleSelectEstoquista}
-          disabled={generating}
+          disabled={generating || loadingEstoquistas || safeEstoquistas.length === 0}
         > 
-          <option value="">Selecione um estoquista</option>
+          <option value="">
+            {loadingEstoquistas ? "Carregando estoquistas..." : "Selecione um estoquista"}
+          </option>
           {safeEstoquistas.map((estoquista) => (
             <option key={estoquista.id} value={estoquista.id}>
               {estoquista.nome || "Sem nome"}
             </option>
           ))}
         </select>
+        {safeEstoquistas.length === 0 && !loadingEstoquistas && (
+          <p className="gerar-oc-field-message">
+            Nenhum estoquista de nÃ­vel 1 disponÃ­vel para esta filial.
+          </p>
+        )}
       </div>
 
       <div className="gerar-oc-cart-list">
@@ -100,7 +108,7 @@ function OcCartPanel({
       </div>
 
       <div className="gerar-oc-summary">
-        <span>Total de itens</span>
+        <span>Total de produtos</span>
         <strong>{safeCart.length}</strong>
         {canGenerate && (
           <button

@@ -202,7 +202,7 @@ function createOcRepository(db = pool) {
       );
     },
 
-    async listByGestor({ gestorId, empresaId }) {
+    async listByGestor({ empresaId }) {
       const result = await db.query(
         `SELECT ocs.*,
                 CASE
@@ -210,6 +210,7 @@ function createOcRepository(db = pool) {
                   ELSE COUNT(DISTINCT oc_items.id)
                 END::int AS qtd,
                 COALESCE(latest_assignment_user.nome, estoquista.nome) AS estoquista_nome,
+                criador.nome AS criador_nome,
                 COALESCE(latest_assignment.estoquista_id, ocs.estoquista_id) AS responsavel_atual_id,
                 first_assignment.estoquista_id AS primeira_contagem_estoquista_id,
                 empresas.codigo AS empresa_codigo,
@@ -244,13 +245,13 @@ function createOcRepository(db = pool) {
            LIMIT 1
          ) first_assignment ON true
          LEFT JOIN users latest_assignment_user ON latest_assignment_user.id = latest_assignment.estoquista_id
+         LEFT JOIN users criador ON criador.id = ocs.gestor_id
          LEFT JOIN users estoquista ON estoquista.id = ocs.estoquista_id
          LEFT JOIN empresas ON empresas.id = ocs.empresa_id
-         WHERE ocs.gestor_id = $1
-           AND ocs.empresa_id = $2
-         GROUP BY ocs.id, estoquista.nome, latest_assignment_user.nome, latest_assignment.estoquista_id, first_assignment.estoquista_id, empresas.codigo, empresas.nome
+         WHERE ocs.empresa_id = $1
+         GROUP BY ocs.id, criador.nome, estoquista.nome, latest_assignment_user.nome, latest_assignment.estoquista_id, first_assignment.estoquista_id, empresas.codigo, empresas.nome
          ORDER BY ocs.id DESC`,
-        [gestorId, empresaId]
+        [empresaId]
       );
 
       return result.rows;

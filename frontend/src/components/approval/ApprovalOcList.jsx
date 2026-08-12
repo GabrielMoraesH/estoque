@@ -40,7 +40,7 @@ const ApprovalOcCard = memo(function ApprovalOcCard({
         <OcEmpresaBadge oc={oc} />
         <p className="oc-codigo">OC {formatOcCode(oc?.id)}</p>
         <div className="oc-meta-row">
-          <p className="oc-qtd">Itens contados: {formatQuantity(oc?.qtd)}</p>
+          <p className="oc-qtd">Produtos contados: {formatQuantity(oc?.qtd)}</p>
           <p className="oc-tempo">Estoquista: {formatResponsibleName(oc?.estoquista_nome)}</p>
         </div>
       </div>

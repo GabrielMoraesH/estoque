@@ -22,6 +22,16 @@ import { getEmpresas } from "../services/api";
 import { feedbackMessages, getFeedbackErrorMessage } from "../utils/feedbackMessages";
 import { asArray } from "../utils/ocData";
 
+const MIN_PASSWORD_LENGTH = 6;
+
+function isInvalidNewPassword(senha) {
+  return typeof senha !== "string" || senha.length < MIN_PASSWORD_LENGTH;
+}
+
+function isInvalidOptionalPassword(senha) {
+  return typeof senha === "string" && senha.trim().length > 0 && senha.length < MIN_PASSWORD_LENGTH;
+}
+
 function Users() {
   const { canManageUsers } = usePermissions();
   const { user: loggedUser } = useAuth();
@@ -91,6 +101,11 @@ function Users() {
 
     if (!Array.isArray(form.empresa_ids) || form.empresa_ids.length === 0) {
       showToast("Selecione ao menos uma empresa de acesso.", "error");
+      return;
+    }
+
+    if (isInvalidNewPassword(form.senha)) {
+      showToast("A senha deve possuir no mínimo 6 caracteres.", "error");
       return;
     }
 
@@ -182,6 +197,11 @@ function Users() {
 
     if (Array.isArray(payload.empresa_ids) && payload.empresa_ids.length === 0) {
       showToast("Selecione ao menos uma empresa de acesso.", "error");
+      return;
+    }
+
+    if (isInvalidOptionalPassword(payload.senha)) {
+      showToast("A nova senha deve possuir no mínimo 6 caracteres.", "error");
       return;
     }
 

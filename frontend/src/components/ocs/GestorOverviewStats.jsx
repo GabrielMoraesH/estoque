@@ -6,7 +6,7 @@ function GestorOverviewStats({ stats }) {
   return (
     <div className="gestor-overview-grid">
       <Panel className="gestor-overview-card">
-        <span className="gestor-overview-label">OCs criadas</span>
+        <span className="gestor-overview-label">Total de OCs</span>
         <strong>{safeStats.total}</strong>
       </Panel>
       <Panel className="gestor-overview-card">

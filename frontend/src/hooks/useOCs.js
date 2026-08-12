@@ -29,9 +29,9 @@ export function useOCs() {
     void activeEmpresaId;
     return getOCsByEstoquista(params);
   }, [activeEmpresaId]);
-  const fetchEstoquistas = useCallback(() => {
+  const fetchEstoquistas = useCallback((params) => {
     void activeEmpresaId;
-    return getEstoquistas();
+    return getEstoquistas(params);
   }, [activeEmpresaId]);
   const fetchApprovalOCs = useCallback((params) => {
     void activeEmpresaId;

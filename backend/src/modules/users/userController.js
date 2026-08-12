@@ -55,7 +55,8 @@ function createUserController({ service = userService } = {}) {
 
     listEstoquistas: asyncHandler(async (req, res) => {
       const result = await service.listEstoquistas({
-        empresaId: req.empresaId
+        empresaId: req.empresaId,
+        nivel: req.query.nivel
       });
       res.json(result);
     })

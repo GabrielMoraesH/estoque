@@ -143,6 +143,7 @@ function UserEditModal({
               type="password"
               value={safeEditingUser.senha || ""}
               placeholder="Opcional"
+              minLength={6}
               onChange={handleFieldChange("senha")}
               disabled={isSaving}
             />

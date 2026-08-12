@@ -332,7 +332,7 @@ function Aprovacao() {
     setLoadingEstoquistas(true);
 
     try {
-      const data = await fetchEstoquistas();
+      const data = await fetchEstoquistas({ nivel: 2 });
       setEstoquistas(asArray(data));
     } catch (error) {
       const message = getFeedbackErrorMessage(error, "Não foi possível carregar os estoquistas.");

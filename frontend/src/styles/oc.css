@@ -226,6 +226,7 @@
 .gestor-oc-meta strong {
   font-size: 15px;
   color: #0f172a;
+  overflow-wrap: anywhere;
 }
 
 .gestor-oc-actions {

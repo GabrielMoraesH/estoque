@@ -21,6 +21,16 @@ import {
 import "../styles/app-pages.css";
 import "../styles/gerar-oc.css";
 
+function hasEmpresaAccess(estoquista, empresaId) {
+  const empresas = Array.isArray(estoquista?.empresas) ? estoquista.empresas : [];
+
+  if (!empresaId || empresas.length === 0) {
+    return true;
+  }
+
+  return empresas.some((empresa) => Number(empresa?.id ?? empresa) === Number(empresaId));
+}
+
 function GerarOC() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -51,7 +61,7 @@ function GerarOC() {
       try {
         const [produtosData, estoquistasData] = await Promise.all([
           fetchProdutos(),
-          fetchEstoquistas()
+          fetchEstoquistas({ nivel: 1 })
         ]);
 
         if (!isCurrentRequest || empresaIdAtLoad !== (activeEmpresa?.id || null)) {
@@ -89,6 +99,15 @@ function GerarOC() {
   const produtosFiltrados = useMemo(
     () => filterProdutosByName(produtosAgrupados, searchTerm),
     [produtosAgrupados, searchTerm]
+  );
+
+  const estoquistasPrimeiraContagem = useMemo(
+    () => asArray(estoquistas).filter((estoquista) => (
+      estoquista?.ativo !== false &&
+      Number(estoquista?.nivel_estoquista) === 1 &&
+      hasEmpresaAccess(estoquista, activeEmpresa?.id)
+    )),
+    [activeEmpresa?.id, estoquistas]
   );
 
   const cartItemIds = useMemo(() => getSelectedItemIdSet(cart), [cart]);
@@ -214,7 +233,8 @@ function GerarOC() {
           />
 
           <OcCartPanel
-            estoquistas={estoquistas}
+            estoquistas={estoquistasPrimeiraContagem}
+            loadingEstoquistas={loading}
             selectedEstoquista={selectedEstoquista}
             onSelectEstoquista={handleSelectEstoquista}
             cart={cart}

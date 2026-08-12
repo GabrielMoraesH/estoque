@@ -31,7 +31,7 @@ function MinhaOcCard({ oc, canFinalizeOc, finalizingId, onOpenOc, onFinalizeOc }
         <p className="oc-codigo">OC {formatOcCode(oc?.id)}</p>
         <div className="oc-meta-row">
           <p className="oc-qtd">
-            Itens contados: {formatCountProgress(oc?.qtd_contados, oc?.qtd)}
+            LocalizaÃ§Ãµes contadas: {formatCountProgress(oc?.qtd_contados, oc?.qtd)}
           </p>
           <p className="oc-tempo">
             {readyForApproval

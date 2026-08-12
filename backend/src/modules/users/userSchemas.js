@@ -34,7 +34,7 @@ function withNivelEstoquistaRules(schema) {
 const registerUserBodySchema = withNivelEstoquistaRules(z.object({
   nome: z.string().trim().min(1),
   login: z.string().trim().min(1),
-  senha: z.string().min(1),
+  senha: z.string().min(6),
   role: roleSchema,
   nivel_estoquista: nivelEstoquistaSchema,
   empresa_ids: empresaIdsSchema
@@ -50,12 +50,18 @@ const updateUserBodySchema = withNivelEstoquistaRules(z.object({
   login: z.string().trim().min(1),
   role: roleSchema,
   nivel_estoquista: nivelEstoquistaSchema,
-  senha: z.string().optional().default(''),
+  senha: z.string().optional().default('').refine((senha) => senha.trim().length === 0 || senha.length >= 6, {
+    message: 'Senha deve possuir no minimo 6 caracteres'
+  }),
   empresa_ids: empresaIdsSchema.optional()
 }));
 
 const updateUserStatusBodySchema = z.object({
   ativo: z.boolean()
+});
+
+const listEstoquistasQuerySchema = z.object({
+  nivel: z.coerce.number().int().min(1).max(3).optional()
 });
 
 module.exports = {
@@ -89,6 +95,6 @@ module.exports = {
   },
   listEstoquistasSchema: {
     params: emptyObjectSchema,
-    query: emptyObjectSchema
+    query: listEstoquistasQuerySchema
   }
 };

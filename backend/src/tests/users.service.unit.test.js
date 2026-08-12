@@ -115,6 +115,29 @@ describe('UserService unitario com repository mockado', () => {
     });
   });
 
+  it.each([
+    ['vazia', ''],
+    ['menor que 6 caracteres', '12345']
+  ])('rejeita criacao com senha %s', async (_description, senha) => {
+    const repository = createRepositoryMock();
+    const { service, passwordHasher } = createService({ repository });
+
+    await expect(service.registerUser({
+      nome: 'Ana',
+      login: 'ana',
+      senha,
+      role: 'gestor',
+      empresa_ids: [1]
+    })).rejects.toMatchObject({
+      message: 'Senha deve possuir no minimo 6 caracteres',
+      statusCode: 400,
+      errorCode: ERROR_CODES.VALIDATION_ERROR
+    });
+
+    expect(passwordHasher.hash).not.toHaveBeenCalled();
+    expect(repository.create).not.toHaveBeenCalled();
+  });
+
   it('propaga excecao inesperada do repository ao registrar usuario', async () => {
     const databaseError = new Error('database unavailable');
     const repository = createRepositoryMock({
@@ -286,6 +309,78 @@ describe('UserService unitario com repository mockado', () => {
     expect(audit.logAction).toHaveBeenCalledWith(expect.objectContaining({
       action: 'user.updated',
       metadata: expect.objectContaining({ password_changed: false })
+    }));
+  });
+
+  it('atualiza usuario sem alterar senha quando campo e omitido', async () => {
+    const currentUser = { id: 7, nome: 'Bia', login: 'bia', role: 'gestor' };
+    const updatedUser = { ...currentUser, login: 'beatriz' };
+    const repository = createRepositoryMock({
+      findSummaryById: jest.fn()
+        .mockResolvedValueOnce(currentUser)
+        .mockResolvedValueOnce(updatedUser),
+      update: jest.fn().mockResolvedValue(updatedUser)
+    });
+    const { service, passwordHasher } = createService({ repository });
+
+    await expect(service.updateUser({
+      id: 7,
+      nome: 'Bia',
+      login: 'beatriz',
+      role: 'gestor'
+    })).resolves.toEqual(updatedUser);
+
+    expect(passwordHasher.hash).not.toHaveBeenCalled();
+    expect(repository.update).toHaveBeenCalledWith(expect.objectContaining({
+      senha: null
+    }));
+  });
+
+  it('rejeita edicao com nova senha menor que 6 caracteres', async () => {
+    const currentUser = { id: 7, nome: 'Bia', login: 'bia', role: 'gestor' };
+    const repository = createRepositoryMock({
+      findSummaryById: jest.fn().mockResolvedValue(currentUser)
+    });
+    const { service, passwordHasher } = createService({ repository });
+
+    await expect(service.updateUser({
+      id: 7,
+      nome: 'Bia',
+      login: 'bia',
+      role: 'gestor',
+      senha: '12345'
+    })).rejects.toMatchObject({
+      message: 'Senha deve possuir no minimo 6 caracteres',
+      statusCode: 400,
+      errorCode: ERROR_CODES.VALIDATION_ERROR
+    });
+
+    expect(passwordHasher.hash).not.toHaveBeenCalled();
+    expect(repository.update).not.toHaveBeenCalled();
+  });
+
+  it('atualiza senha quando nova senha possui ao menos 6 caracteres', async () => {
+    const currentUser = { id: 7, nome: 'Bia', login: 'bia', role: 'gestor' };
+    const updatedUser = { ...currentUser };
+    const repository = createRepositoryMock({
+      findSummaryById: jest.fn()
+        .mockResolvedValueOnce(currentUser)
+        .mockResolvedValueOnce(updatedUser),
+      update: jest.fn().mockResolvedValue(updatedUser)
+    });
+    const { service, passwordHasher } = createService({ repository });
+
+    await expect(service.updateUser({
+      id: 7,
+      nome: 'Bia',
+      login: 'bia',
+      role: 'gestor',
+      senha: 'abcdef'
+    })).resolves.toEqual(updatedUser);
+
+    expect(passwordHasher.hash).toHaveBeenCalledWith('abcdef', 4);
+    expect(repository.update).toHaveBeenCalledWith(expect.objectContaining({
+      senha: 'hashed:abcdef'
     }));
   });
 
@@ -546,6 +641,27 @@ describe('UserService unitario com repository mockado', () => {
         empresa_ids: [6]
       })
     }));
+  });
+
+  it('lista estoquistas ativos filtrando empresa e nivel quando informado', async () => {
+    const repository = createRepositoryMock({
+      listEstoquistas: jest.fn().mockResolvedValue([
+        { id: 1, nome: 'Nivel 1', nivel_estoquista: 1, ativo: true, empresas: [{ id: 2 }] }
+      ])
+    });
+    const { service } = createService({ repository });
+
+    await expect(service.listEstoquistas({
+      empresaId: 2,
+      nivel: '1'
+    })).resolves.toEqual([
+      { id: 1, nome: 'Nivel 1', nivel_estoquista: 1, ativo: true, empresas: [{ id: 2 }] }
+    ]);
+
+    expect(repository.listEstoquistas).toHaveBeenCalledWith({
+      empresaId: 2,
+      nivel: 1
+    });
   });
 
   it('converte violacao de chave estrangeira ao excluir usuario', async () => {

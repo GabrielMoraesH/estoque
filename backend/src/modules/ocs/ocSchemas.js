@@ -21,11 +21,20 @@ const recountBodySchema = z.object({
   novo_estoquista_id: z.coerce.number().int().positive()
 });
 
+const countQuantitySchema = z.preprocess((value) => {
+  if (typeof value !== 'string') {
+    return value;
+  }
+
+  const trimmedValue = value.trim();
+  return /^\d+$/.test(trimmedValue) ? Number(trimmedValue) : value;
+}, z.number().int().min(0).refine(Number.isSafeInteger));
+
 const saveCountBodySchema = z.object({
   oc_id: z.coerce.number().int().positive(),
   item_id: z.coerce.number().int().positive().optional(),
   oc_localizacao_id: z.coerce.number().int().positive().optional(),
-  quantidade: z.coerce.number().int().min(0),
+  quantidade: countQuantitySchema,
   lote: z.string().trim().min(1)
 }).refine((data) => data.item_id || data.oc_localizacao_id, {
   message: 'Informe item_id ou oc_localizacao_id',

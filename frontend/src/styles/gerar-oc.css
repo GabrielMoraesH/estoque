@@ -150,6 +150,13 @@
   margin-top: 22px;
 }
 
+.gerar-oc-field-message {
+  margin: 8px 0 0;
+  color: #b45309;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 .gerar-oc-cart-item {
   display: flex;
   justify-content: space-between;

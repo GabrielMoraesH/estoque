@@ -35,6 +35,26 @@ function normalizeNivelEstoquista(role, nivelEstoquista) {
   return normalizedLevel;
 }
 
+function assertPasswordMinLength(senha) {
+  if (typeof senha !== 'string' || senha.length < 6) {
+    throw badRequest('Senha deve possuir no minimo 6 caracteres');
+  }
+}
+
+function normalizeEstoquistaNivelFilter(nivel) {
+  if (nivel === undefined || nivel === null || nivel === '') {
+    return undefined;
+  }
+
+  const normalizedLevel = Number(nivel);
+
+  if (![1, 2, 3].includes(normalizedLevel)) {
+    throw badRequest('Nivel do estoquista invalido');
+  }
+
+  return normalizedLevel;
+}
+
 function normalizeEmpresaIds(empresaIds, { required = false } = {}) {
   if (empresaIds === undefined) {
     if (required) {
@@ -92,6 +112,7 @@ function createUserService({
     auditContext
   }) {
     try {
+      assertPasswordMinLength(senha);
       const empresaIds = normalizeEmpresaIds(empresa_ids, { required: true });
       const nivelEstoquista = normalizeNivelEstoquista(role, nivel_estoquista);
       const hashedPassword = await passwordHasher.hash(senha, security.bcryptSaltRounds);
@@ -205,6 +226,10 @@ function createUserService({
       }
 
       const passwordChanged = Boolean(senha && senha.trim());
+      if (passwordChanged) {
+        assertPasswordMinLength(senha);
+      }
+
       const hashedPassword = passwordChanged
         ? await passwordHasher.hash(senha, security.bcryptSaltRounds)
         : null;
@@ -338,8 +363,11 @@ function createUserService({
     }
   }
 
-  async function listEstoquistas({ empresaId } = {}) {
-    return repository.listEstoquistas({ empresaId });
+  async function listEstoquistas({ empresaId, nivel } = {}) {
+    return repository.listEstoquistas({
+      empresaId,
+      nivel: normalizeEstoquistaNivelFilter(nivel)
+    });
   }
 
   return {

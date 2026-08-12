@@ -305,9 +305,8 @@ function createInMemoryOcRepository({
         });
       },
 
-      async listByGestor({ gestorId, empresaId }) {
+      async listByGestor({ empresaId }) {
         return currentState.ocs
-          .filter((oc) => Number(oc.gestor_id) === Number(gestorId))
           .filter((oc) => Number(oc.empresa_id) === Number(empresaId))
           .map((oc) => {
             const ocItems = currentState.items.filter((item) => Number(item.oc_id) === Number(oc.id));
@@ -334,10 +333,14 @@ function createInMemoryOcRepository({
             const estoquista = currentState.users.find(
               (user) => Number(user.id) === Number(latestAssignment?.estoquista_id || oc.estoquista_id)
             );
+            const criador = currentState.users.find(
+              (user) => Number(user.id) === Number(oc.gestor_id)
+            );
             return {
               ...clone(oc),
               qtd: products.length > 0 ? products.length : ocItems.length,
               estoquista_nome: estoquista?.nome || null,
+              criador_nome: criador?.nome || null,
               responsavel_atual_id: latestAssignment?.estoquista_id || oc.estoquista_id,
               primeira_contagem_estoquista_id: firstAssignment?.estoquista_id || null,
               ultima_contagem_em: movementDates.at(-1) || null

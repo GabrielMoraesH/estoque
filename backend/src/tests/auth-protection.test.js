@@ -196,4 +196,29 @@ describe('Protecao de rotas autenticadas', () => {
       });
     });
   });
+
+  describe('POST /ocs/contar', () => {
+    it('rejeita quantidade vazia antes de chamar o service', async () => {
+      jwt.verify.mockReturnValue({
+        id: 3,
+        role: 'estoquista'
+      });
+      mockActiveEmpresaAccess();
+
+      const response = await request(app)
+        .post('/ocs/contar')
+        .set('Authorization', bearerToken('token-estoquista'))
+        .set('x-empresa-id', '1')
+        .send({
+          oc_id: 10,
+          oc_localizacao_id: 20,
+          quantidade: '',
+          lote: 'L1'
+        });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toHaveProperty('error');
+      expect(ocService.saveOcCount).not.toHaveBeenCalled();
+    });
+  });
 });

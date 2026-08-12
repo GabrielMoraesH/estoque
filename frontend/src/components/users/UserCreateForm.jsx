@@ -73,6 +73,8 @@ function UserCreateForm({ form, empresas = [], empresasLoading = false, creating
             type="password"
             value={form.senha}
             placeholder="Informe a senha"
+            minLength={6}
+            required
             onChange={handleSenhaChange}
             disabled={creating}
           />

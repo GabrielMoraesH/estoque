@@ -206,7 +206,7 @@ describe('OcService unitario com repository mockado', () => {
     expect(audit.logAction).not.toHaveBeenCalled();
   });
 
-  it('lista OCs do gestor logado e aplica filtros do repository', async () => {
+  it('lista OCs da empresa ativa para gestor logado', async () => {
     const result = [{ id: 1, codigo: 'OC-1' }];
     const repository = createRepositoryMock({
       listByGestor: jest.fn().mockResolvedValue(result)
@@ -214,7 +214,73 @@ describe('OcService unitario com repository mockado', () => {
     const { service } = createService({ repository });
 
     await expect(service.listMyGestorOcs({ user: gestor, empresaId: 1 })).resolves.toEqual(result);
-    expect(repository.listByGestor).toHaveBeenCalledWith({ gestorId: 11, empresaId: 1 });
+    expect(repository.listByGestor).toHaveBeenCalledWith({ empresaId: 1 });
+  });
+
+  it('admin e gestor veem todas as OCs da empresa ativa sem filtrar pelo criador', async () => {
+    const repository = createInMemoryOcRepository({
+      users: [
+        { id: 1, nome: 'Admin A', role: 'admin', empresas: [{ id: 1 }, { id: 6 }] },
+        { id: 11, nome: 'Gestor B', role: 'gestor', empresas: [{ id: 1 }, { id: 6 }] },
+        { id: 12, nome: 'Gestor C', role: 'gestor', empresas: [{ id: 1 }] },
+        { id: 22, nome: 'Estoquista', role: 'estoquista', nivel_estoquista: 1, ativo: true, empresas: [{ id: 1 }, { id: 6 }] }
+      ],
+      ocs: [
+        { id: 101, codigo: 'OC-A', gestor_id: 1, estoquista_id: 22, empresa_id: 1, status: OC_STATUS.OPEN },
+        { id: 102, codigo: 'OC-B', gestor_id: 11, estoquista_id: 22, empresa_id: 1, status: OC_STATUS.WAITING_APPROVAL },
+        { id: 103, codigo: 'OC-C', gestor_id: 12, estoquista_id: 22, empresa_id: 1, status: OC_STATUS.FINALIZED },
+        { id: 601, codigo: 'OC-D', gestor_id: 12, estoquista_id: 22, empresa_id: 6, status: OC_STATUS.OPEN }
+      ],
+      items: [
+        { id: 1001, oc_id: 101, produto: 'Legado A', status: ITEM_STATUS.PENDING },
+        { id: 1002, oc_id: 601, produto: 'Outra empresa', status: ITEM_STATUS.PENDING }
+      ],
+      ocProdutos: [
+        { id: 2001, oc_id: 102, descricao_snapshot: 'Produto novo B', status: ITEM_STATUS.PENDING },
+        { id: 2002, oc_id: 103, descricao_snapshot: 'Produto novo C', status: ITEM_STATUS.PENDING }
+      ],
+      ocLocalizacoes: [
+        { id: 3001, oc_produto_id: 2001, endereco_snapshot: 'A1', status: ITEM_STATUS.PENDING },
+        { id: 3002, oc_produto_id: 2002, endereco_snapshot: 'B1', status: ITEM_STATUS.PENDING }
+      ],
+      ocAssignments: [
+        { id: 4001, oc_id: 102, ciclo: 1, fase: 'contagem', estoquista_id: 22, status: 'ativo' },
+        { id: 4002, oc_id: 103, ciclo: 1, fase: 'contagem', estoquista_id: 22, status: 'finalizado' }
+      ]
+    });
+    const { service } = createService({ repository });
+
+    const adminList = await service.listOcsByGestor({
+      user: admin,
+      gestorId: 1,
+      empresaId: 1
+    });
+    const gestorList = await service.listMyGestorOcs({
+      user: { id: 11, role: 'gestor' },
+      empresaId: 1
+    });
+    const empresa6List = await service.listMyGestorOcs({
+      user: { id: 11, role: 'gestor' },
+      empresaId: 6
+    });
+
+    expect(adminList.map((oc) => oc.codigo)).toEqual(['OC-C', 'OC-B', 'OC-A']);
+    expect(gestorList.map((oc) => oc.codigo)).toEqual(['OC-C', 'OC-B', 'OC-A']);
+    expect(gestorList.find((oc) => oc.codigo === 'OC-A')).toMatchObject({
+      qtd: 1,
+      criador_nome: 'Admin A',
+      estoquista_nome: 'Estoquista'
+    });
+    expect(gestorList.find((oc) => oc.codigo === 'OC-B')).toMatchObject({
+      qtd: 1,
+      criador_nome: 'Gestor B',
+      estoquista_nome: 'Estoquista'
+    });
+    expect(gestorList.find((oc) => oc.codigo === 'OC-C')).toMatchObject({
+      criador_nome: 'Gestor C',
+      estoquista_nome: 'Estoquista'
+    });
+    expect(empresa6List.map((oc) => oc.codigo)).toEqual(['OC-D']);
   });
 
   it('bloqueia listagem de gestor para perfil sem permissao', async () => {
@@ -596,6 +662,54 @@ describe('OcService unitario com repository mockado', () => {
       empresaId: 1,
       ocId: 55
     })).resolves.toEqual(items);
+  });
+
+  it('permite ao gestor abrir detalhes de OC criada por outro gestor na mesma empresa', async () => {
+    const legacyItems = [
+      { id: 9, oc_id: 55, produto: 'Dipirona', saldo_sistema: 25, status: ITEM_STATUS.COUNTED }
+    ];
+    const repository = createRepositoryMock({
+      findOcById: jest.fn().mockResolvedValue({
+        id: 55,
+        gestor_id: 12,
+        estoquista_id: 22,
+        empresa_id: 1,
+        status: OC_STATUS.WAITING_APPROVAL
+      }),
+      listItems: jest.fn().mockResolvedValue(legacyItems)
+    });
+    const { service } = createService({ repository });
+
+    await expect(service.listOcItems({
+      user: { id: 11, role: 'gestor' },
+      empresaId: 1,
+      ocId: 55
+    })).resolves.toEqual(legacyItems);
+  });
+
+  it('permite ao gestor abrir detalhes de OC nova criada por outro gestor na mesma empresa', async () => {
+    const products = [
+      { id: 900, oc_id: 55, produto: 'Seringa', new_model: true }
+    ];
+    const repository = createRepositoryMock({
+      findOcById: jest.fn().mockResolvedValue({
+        id: 55,
+        gestor_id: 12,
+        estoquista_id: 22,
+        empresa_id: 1,
+        status: OC_STATUS.WAITING_APPROVAL
+      }),
+      ocHasNewModel: jest.fn().mockResolvedValue(true),
+      listAdminApprovalProducts: jest.fn().mockResolvedValue(products)
+    });
+    const { service } = createService({ repository });
+
+    await expect(service.listOcItems({
+      user: { id: 11, role: 'gestor' },
+      empresaId: 1,
+      ocId: 55
+    })).resolves.toEqual(products);
+    expect(repository.listItems).not.toHaveBeenCalled();
   });
 
   it('bloqueia estoquista ao acessar itens da OC de outro estoquista', async () => {

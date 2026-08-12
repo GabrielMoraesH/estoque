@@ -170,7 +170,7 @@ function createUserRepository(db = pool) {
       return result.rows[0] || null;
     },
 
-    async listEstoquistas({ empresaId } = {}) {
+    async listEstoquistas({ empresaId, nivel } = {}) {
       const params = [];
       const empresaFilter = empresaId
         ? `AND EXISTS (
@@ -185,10 +185,17 @@ function createUserRepository(db = pool) {
         params.push(empresaId);
       }
 
+      const nivelFilter = nivel ? `AND users.nivel_estoquista = $${params.length + 1}` : '';
+
+      if (nivel) {
+        params.push(nivel);
+      }
+
       const result = await db.query(
         `SELECT
            users.id,
            users.nome,
+           users.ativo,
            users.nivel_estoquista,
            COALESCE(
              json_agg(
@@ -205,7 +212,9 @@ function createUserRepository(db = pool) {
          LEFT JOIN user_empresas ON user_empresas.user_id = users.id
          LEFT JOIN empresas ON empresas.id = user_empresas.empresa_id
          WHERE users.role = 'estoquista'
+           AND users.ativo = true
            ${empresaFilter}
+           ${nivelFilter}
          GROUP BY users.id
          ORDER BY users.nome ASC`,
         params

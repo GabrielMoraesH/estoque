@@ -35,6 +35,11 @@ function GestorOcCard({ oc, onOpenOc }) {
 
         <div className="gestor-oc-meta-grid">
           <div className="gestor-oc-meta">
+            <span>Criado por</span>
+            <strong>{formatResponsibleName(safeOc.criador_nome, "-")}</strong>
+          </div>
+
+          <div className="gestor-oc-meta">
             <span>{getOcResponsibleLabel(safeOc.status)}</span>
             <strong>{formatResponsibleName(safeOc.estoquista_nome)}</strong>
           </div>
