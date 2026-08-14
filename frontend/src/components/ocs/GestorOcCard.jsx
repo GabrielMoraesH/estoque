@@ -5,10 +5,9 @@ import {
   formatQuantity,
   formatRelativeTime,
   formatResponsibleName,
-  getOcResponsibleLabel,
-  getOcStatusLabel,
   getStatusClassName
 } from "../../utils/formatters";
+import { getOperationalOcStatus, getOperationalOcStatusLabel } from "../../utils/ocData";
 import OcEmpresaBadge from "./OcEmpresaBadge";
 
 function GestorOcCard({ oc, onOpenOc }) {
@@ -21,15 +20,15 @@ function GestorOcCard({ oc, onOpenOc }) {
   return (
     <div className="oc-card gestor-oc-card">
       <div className="oc-info gestor-oc-info">
-        <span className={`status-badge ${getStatusClassName(safeOc.status)}`}>
-          {getOcStatusLabel(safeOc.status, { uppercase: true })}
+        <span className={`status-badge ${getStatusClassName(getOperationalOcStatus(safeOc))}`}>
+          {getOperationalOcStatusLabel(safeOc)}
         </span>
         <OcEmpresaBadge oc={safeOc} />
 
         <div className="gestor-oc-headline">
           <p className="oc-codigo">OC {formatOcCode(safeOc.id)}</p>
           <div className="oc-meta-row">
-            <p className="oc-qtd">Itens na ordem: {formatQuantity(safeOc.qtd)}</p>
+            <p className="oc-qtd">Produtos: {formatQuantity(safeOc.qtd)}</p>
           </div>
         </div>
 
@@ -40,8 +39,13 @@ function GestorOcCard({ oc, onOpenOc }) {
           </div>
 
           <div className="gestor-oc-meta">
-            <span>{getOcResponsibleLabel(safeOc.status)}</span>
+            <span>Responsável operacional</span>
             <strong>{formatResponsibleName(safeOc.estoquista_nome)}</strong>
+          </div>
+
+          <div className="gestor-oc-meta">
+            <span>Progresso</span>
+            <strong>{safeOc.status === "finalizada" ? "Concluída" : `${formatQuantity(safeOc.localizacoes_contadas)} / ${formatQuantity(safeOc.total_localizacoes)} localizações`}</strong>
           </div>
 
           <div className="gestor-oc-meta">
@@ -51,7 +55,7 @@ function GestorOcCard({ oc, onOpenOc }) {
 
           <div className="gestor-oc-meta">
             <span>Última movimentação</span>
-            <strong>{formatRelativeTime(safeOc.ultima_contagem_em)}</strong>
+            <strong>{formatRelativeTime(safeOc.ultima_movimentacao_em || safeOc.updated_at || safeOc.created_at)}</strong>
           </div>
         </div>
       </div>

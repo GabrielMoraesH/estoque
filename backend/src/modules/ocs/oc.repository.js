@@ -205,31 +205,33 @@ function createOcRepository(db = pool) {
     async listByGestor({ empresaId }) {
       const result = await db.query(
         `SELECT ocs.*,
-                CASE
-                  WHEN COUNT(DISTINCT oc_produtos.id) > 0 THEN COUNT(DISTINCT oc_produtos.id)
-                  ELSE COUNT(DISTINCT oc_items.id)
-                END::int AS qtd,
+                CASE WHEN product_summary.qtd > 0 THEN product_summary.qtd ELSE legacy_summary.qtd END AS qtd,
                 COALESCE(latest_assignment_user.nome, estoquista.nome) AS estoquista_nome,
                 criador.nome AS criador_nome,
+                latest_assignment.id AS assignment_id,
+                latest_assignment.ciclo AS assignment_ciclo,
+                latest_assignment.fase AS assignment_fase,
+                latest_assignment.status AS assignment_status,
                 COALESCE(latest_assignment.estoquista_id, ocs.estoquista_id) AS responsavel_atual_id,
                 first_assignment.estoquista_id AS primeira_contagem_estoquista_id,
                 empresas.codigo AS empresa_codigo,
                 empresas.nome AS empresa_nome,
+                CASE WHEN product_summary.qtd > 0 THEN assignment_progress.total ELSE legacy_summary.qtd END AS total_localizacoes,
+                CASE WHEN product_summary.qtd > 0 THEN assignment_progress.contadas ELSE legacy_summary.contadas END AS localizacoes_contadas,
+                legacy_summary.has_recount AS has_legacy_recount,
                 NULLIF(
                   GREATEST(
-                    COALESCE(MAX(contagens.created_at), '-infinity'::timestamptz),
-                    COALESCE(MAX(movement_assignments.created_at), '-infinity'::timestamptz),
-                    COALESCE(MAX(movement_assignments.finalizado_em), '-infinity'::timestamptz)
+                    COALESCE(ocs.created_at, '-infinity'::timestamptz),
+                    COALESCE(ocs.updated_at, '-infinity'::timestamptz),
+                    COALESCE(movement.ultima_contagem_em, '-infinity'::timestamptz),
+                    COALESCE(movement.ultimo_assignment_em, '-infinity'::timestamptz),
+                    COALESCE(movement.ultima_finalizacao_em, '-infinity'::timestamptz)
                   ),
                   '-infinity'::timestamptz
-                ) AS ultima_contagem_em
+                ) AS ultima_movimentacao_em
          FROM ocs
-         LEFT JOIN oc_items ON oc_items.oc_id = ocs.id
-         LEFT JOIN oc_produtos ON oc_produtos.oc_id = ocs.id
-         LEFT JOIN contagens ON contagens.oc_id = ocs.id
-         LEFT JOIN oc_assignments movement_assignments ON movement_assignments.oc_id = ocs.id
          LEFT JOIN LATERAL (
-           SELECT assignments.estoquista_id
+           SELECT assignments.id, assignments.ciclo, assignments.estoquista_id, assignments.fase, assignments.status
            FROM oc_assignments assignments
            WHERE assignments.oc_id = ocs.id
            ORDER BY assignments.ciclo DESC, assignments.id DESC
@@ -244,13 +246,40 @@ function createOcRepository(db = pool) {
            ORDER BY assignments.id ASC
            LIMIT 1
          ) first_assignment ON true
+         LEFT JOIN LATERAL (
+           SELECT COUNT(DISTINCT oc_produtos.id)::int AS qtd
+           FROM oc_produtos
+           WHERE oc_produtos.oc_id = ocs.id
+         ) product_summary ON true
+         LEFT JOIN LATERAL (
+           SELECT COUNT(*)::int AS qtd,
+                  COUNT(*) FILTER (WHERE oc_items.status IN ('contado', 'aprovado'))::int AS contadas,
+                  COALESCE(BOOL_OR(oc_items.status = 'recontar'), false) AS has_recount
+           FROM oc_items
+           WHERE oc_items.oc_id = ocs.id
+         ) legacy_summary ON true
+         LEFT JOIN LATERAL (
+           SELECT COUNT(DISTINCT locations.id)::int AS total,
+                  COUNT(DISTINCT counts.oc_localizacao_id)::int AS contadas
+           FROM oc_assignment_produtos assignment_products
+           INNER JOIN oc_localizacoes locations
+             ON locations.oc_produto_id = assignment_products.oc_produto_id
+           LEFT JOIN contagens counts
+             ON counts.assignment_id = assignment_products.assignment_id
+            AND counts.oc_localizacao_id = locations.id
+           WHERE assignment_products.assignment_id = latest_assignment.id
+         ) assignment_progress ON true
+         LEFT JOIN LATERAL (
+           SELECT (SELECT MAX(contagens.created_at) FROM contagens WHERE contagens.oc_id = ocs.id) AS ultima_contagem_em,
+                  (SELECT MAX(assignments.created_at) FROM oc_assignments assignments WHERE assignments.oc_id = ocs.id) AS ultimo_assignment_em,
+                  (SELECT MAX(assignments.finalizado_em) FROM oc_assignments assignments WHERE assignments.oc_id = ocs.id) AS ultima_finalizacao_em
+         ) movement ON true
          LEFT JOIN users latest_assignment_user ON latest_assignment_user.id = latest_assignment.estoquista_id
          LEFT JOIN users criador ON criador.id = ocs.gestor_id
          LEFT JOIN users estoquista ON estoquista.id = ocs.estoquista_id
          LEFT JOIN empresas ON empresas.id = ocs.empresa_id
          WHERE ocs.empresa_id = $1
-         GROUP BY ocs.id, criador.nome, estoquista.nome, latest_assignment_user.nome, latest_assignment.estoquista_id, first_assignment.estoquista_id, empresas.codigo, empresas.nome
-         ORDER BY ocs.id DESC`,
+         ORDER BY ultima_movimentacao_em DESC NULLS LAST, ocs.id DESC`,
         [empresaId]
       );
 

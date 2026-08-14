@@ -14,7 +14,7 @@ import SectionHeader from "../components/ui/SectionHeader";
 import GestorOcCard from "../components/ocs/GestorOcCard";
 import GestorOverviewStats from "../components/ocs/GestorOverviewStats";
 import { feedbackMessages, getFeedbackErrorMessage } from "../utils/feedbackMessages";
-import { asArray, getRenderableList, summarizeOcsByStatus } from "../utils/ocData";
+import { asArray, getOperationalOcStatus, getRenderableList, summarizeOcsByStatus } from "../utils/ocData";
 import "../styles/oc.css";
 import "../styles/app-pages.css";
 
@@ -29,6 +29,9 @@ function Gestor() {
   const [ocs, setOcs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  const [loadedEmpresaId, setLoadedEmpresaId] = useState(null);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("todas");
 
   useEffect(() => {
     const empresaIdAtLoad = activeEmpresa?.id || null;
@@ -38,6 +41,7 @@ function Gestor() {
       setLoading(true);
       setLoadError("");
       setOcs([]);
+      setLoadedEmpresaId(null);
 
       try {
         const data = await fetchGestorOCs({
@@ -50,6 +54,7 @@ function Gestor() {
         }
 
         setOcs(asArray(data));
+        setLoadedEmpresaId(empresaIdAtLoad);
       } catch (error) {
         if (!isCurrentRequest || empresaIdAtLoad !== (activeEmpresa?.id || null)) {
           return;
@@ -57,6 +62,7 @@ function Gestor() {
 
         const message = getFeedbackErrorMessage(error, feedbackMessages.oc.loadGestorListError);
         setOcs([]);
+        setLoadedEmpresaId(empresaIdAtLoad);
         setLoadError(message);
         showToast(message, "error");
       } finally {
@@ -75,8 +81,24 @@ function Gestor() {
     };
   }, [activeEmpresa?.id, canViewGestorOcs, fetchGestorOCs, showToast, user?.id, user?.role]);
 
-  const stats = useMemo(() => summarizeOcsByStatus(ocs), [ocs]);
-  const safeOcs = getRenderableList(ocs);
+  const isCurrentEmpresaLoaded = loadedEmpresaId === (activeEmpresa?.id || null);
+  const effectiveLoading = loading || !isCurrentEmpresaLoaded;
+  const safeOcs = useMemo(
+    () => (isCurrentEmpresaLoaded ? getRenderableList(ocs) : []),
+    [isCurrentEmpresaLoaded, ocs]
+  );
+  const stats = useMemo(() => summarizeOcsByStatus(safeOcs), [safeOcs]);
+  const filteredOcs = useMemo(() => {
+    const term = search.trim().toLocaleLowerCase("pt-BR");
+    return safeOcs.filter((oc) => {
+      const matchesStatus = statusFilter === "todas" || getOperationalOcStatus(oc) === statusFilter;
+      const searchable = [oc.id, oc.codigo, oc.criador_nome, oc.estoquista_nome]
+        .filter(Boolean)
+        .join(" ")
+        .toLocaleLowerCase("pt-BR");
+      return matchesStatus && (!term || searchable.includes(term));
+    });
+  }, [safeOcs, search, statusFilter]);
 
   const handleGoToGerarOc = useCallback(() => {
     navigate("/gerar-oc", {
@@ -108,7 +130,7 @@ function Gestor() {
           subtitle="Acompanhe as ordens criadas, veja o andamento da contagem e abra os detalhes de cada OC."
         />
 
-        <GestorOverviewStats stats={stats} />
+        {!effectiveLoading && !loadError ? <GestorOverviewStats stats={stats} /> : null}
 
         <Panel
           className="toolbar-card gestor-toolbar-card"
@@ -131,17 +153,41 @@ function Gestor() {
           subtitle="Cada card mostra o status atual, o responsável pela contagem e a última movimentação."
         />
 
+        <div className="gestor-filters" role="search" aria-label="Filtrar ordens de contagem">
+          <label>
+            <span>Buscar</span>
+            <input
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="OC, criador ou responsável"
+            />
+          </label>
+          <label>
+            <span>Status</span>
+            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+              <option value="todas">Todas</option>
+              <option value="em_contagem">Em contagem</option>
+              <option value="aguardando_aprovacao">Aguardando aprovação</option>
+              <option value="em_recontagem">Em recontagem</option>
+              <option value="finalizada">Finalizadas</option>
+            </select>
+          </label>
+        </div>
+
         <DataState
-          loading={loading}
+          loading={effectiveLoading}
           error={loadError}
-          empty={safeOcs.length === 0}
+          empty={filteredOcs.length === 0}
           loadingTitle="Carregando OCs"
           loadingMessage="Buscando as ordens criadas e suas últimas movimentações."
           errorTitle="Não foi possível carregar as OCs"
-          emptyTitle="Nenhuma OC encontrada"
-          emptyMessage="Quando uma ordem de contagem for criada, ela aparecerá nesta lista."
+          emptyTitle={safeOcs.length === 0 ? "Nenhuma OC encontrada" : "Nenhum resultado encontrado"}
+          emptyMessage={safeOcs.length === 0
+            ? "Quando uma ordem de contagem for criada, ela aparecerá nesta lista."
+            : "Ajuste a busca ou o filtro de status para ver outras OCs."}
         >
-          {safeOcs.map((oc) => (
+          {filteredOcs.map((oc) => (
             <GestorOcCard key={oc.id} oc={oc} onOpenOc={handleOpenOc} />
           ))}
         </DataState>

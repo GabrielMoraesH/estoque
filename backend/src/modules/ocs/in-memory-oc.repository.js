@@ -314,13 +314,16 @@ function createInMemoryOcRepository({
             const latestAssignment = currentState.ocAssignments
               .filter((assignment) => Number(assignment.oc_id) === Number(oc.id))
               .sort((a, b) => Number(b.ciclo) - Number(a.ciclo) || Number(b.id) - Number(a.id))[0] || null;
-            const firstAssignment = currentState.ocAssignments.find(
-              (assignment) =>
+            const firstAssignment = currentState.ocAssignments
+              .filter((assignment) =>
                 Number(assignment.oc_id) === Number(oc.id) &&
                 Number(assignment.ciclo) === 1 &&
                 assignment.fase === 'contagem'
-            ) || null;
+              )
+              .sort((a, b) => Number(a.id) - Number(b.id))[0] || null;
             const movementDates = [
+              oc.created_at,
+              oc.updated_at,
               ...currentState.counts
                 .filter((count) => Number(count.oc_id) === Number(oc.id))
                 .map((count) => count.created_at),
@@ -329,24 +332,47 @@ function createInMemoryOcRepository({
                 .flatMap((assignment) => [assignment.created_at, assignment.finalizado_em])
             ]
               .filter(Boolean)
-              .sort();
+              .sort((a, b) => new Date(a) - new Date(b));
             const estoquista = currentState.users.find(
               (user) => Number(user.id) === Number(latestAssignment?.estoquista_id || oc.estoquista_id)
             );
             const criador = currentState.users.find(
               (user) => Number(user.id) === Number(oc.gestor_id)
             );
+            const assignedProductIds = latestAssignment
+              ? currentState.ocAssignmentProdutos
+                .filter((item) => Number(item.assignment_id) === Number(latestAssignment.id))
+                .map((item) => Number(item.oc_produto_id))
+              : [];
+            const assignmentLocations = currentState.ocLocalizacoes.filter((location) =>
+              assignedProductIds.includes(Number(location.oc_produto_id))
+            );
+            const countedLocationIds = new Set(currentState.counts
+              .filter((count) => Number(count.assignment_id) === Number(latestAssignment?.id))
+              .map((count) => Number(count.oc_localizacao_id)));
             return {
               ...clone(oc),
               qtd: products.length > 0 ? products.length : ocItems.length,
               estoquista_nome: estoquista?.nome || null,
               criador_nome: criador?.nome || null,
+              assignment_id: latestAssignment?.id || null,
+              assignment_ciclo: latestAssignment?.ciclo || null,
+              assignment_fase: latestAssignment?.fase || null,
+              assignment_status: latestAssignment?.status || null,
               responsavel_atual_id: latestAssignment?.estoquista_id || oc.estoquista_id,
               primeira_contagem_estoquista_id: firstAssignment?.estoquista_id || null,
-              ultima_contagem_em: movementDates.at(-1) || null
+              total_localizacoes: products.length > 0 ? assignmentLocations.length : ocItems.length,
+              localizacoes_contadas: products.length > 0
+                ? assignmentLocations.filter((location) => countedLocationIds.has(Number(location.id))).length
+                : ocItems.filter((item) => ['contado', 'aprovado'].includes(item.status)).length,
+              has_legacy_recount: products.length === 0 && ocItems.some((item) => item.status === 'recontar'),
+              ultima_movimentacao_em: movementDates.at(-1) || null
             };
           })
-          .sort((a, b) => Number(b.id) - Number(a.id));
+          .sort((a, b) => {
+            const dateDiff = new Date(b.ultima_movimentacao_em || 0) - new Date(a.ultima_movimentacao_em || 0);
+            return dateDiff || Number(b.id) - Number(a.id);
+          });
       },
 
       async listByEstoquista({ estoquistaId, empresaId, itemStatus, ocStatus }) {

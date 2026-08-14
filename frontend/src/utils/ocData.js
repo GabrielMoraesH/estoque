@@ -12,7 +12,7 @@ import {
 
 const DEFAULT_OC_STATS = {
   total: 0,
-  abertas: 0,
+  emContagem: 0,
   aprovacao: 0,
   finalizadas: 0,
   recontagem: 0
@@ -261,16 +261,40 @@ export function summarizeOcsByStatus(ocs) {
       return acc;
     }
 
-    const status = (oc.status || "aberta").toLowerCase();
+    const status = getOperationalOcStatus(oc);
     acc.total += 1;
 
-    if (status === "aberta") acc.abertas += 1;
+    if (status === "em_contagem") acc.emContagem += 1;
     if (status === "aguardando_aprovacao") acc.aprovacao += 1;
     if (status === "finalizada") acc.finalizadas += 1;
-    if (status === "recontar") acc.recontagem += 1;
+    if (status === "em_recontagem") acc.recontagem += 1;
 
     return acc;
   }, { ...DEFAULT_OC_STATS });
+}
+
+export function getOperationalOcStatus(oc) {
+  const persistedStatus = String(oc?.status || "aberta").toLowerCase();
+
+  if (persistedStatus === "finalizada") return "finalizada";
+  if (oc?.assignment_fase === "recontagem" && oc?.assignment_status === "ativo") {
+    return "em_recontagem";
+  }
+  if (oc?.has_legacy_recount || persistedStatus === "recontar" || persistedStatus === "recontagem") {
+    return "em_recontagem";
+  }
+  if (persistedStatus === "aguardando_aprovacao") return "aguardando_aprovacao";
+  return "em_contagem";
+}
+
+export function getOperationalOcStatusLabel(oc) {
+  const labels = {
+    em_contagem: "Em contagem",
+    aguardando_aprovacao: "Aguardando aprovação",
+    em_recontagem: "Em recontagem",
+    finalizada: "Finalizada"
+  };
+  return labels[getOperationalOcStatus(oc)];
 }
 
 export function summarizeOcItems(items) {

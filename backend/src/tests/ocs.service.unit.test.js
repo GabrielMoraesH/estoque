@@ -285,6 +285,107 @@ describe('OcService unitario com repository mockado', () => {
     expect(empresa6List.map((oc) => oc.codigo)).toEqual(['OC-D']);
   });
 
+  it('gestao resume e ordena recontagem parcial pelas localizacoes do assignment mais recente', async () => {
+    const repository = createInMemoryOcRepository({
+      users: [
+        { id: 11, nome: 'Gestor', role: 'gestor' },
+        { id: 22, nome: 'Primeiro contador', role: 'estoquista' },
+        { id: 33, nome: 'Responsavel recontagem', role: 'estoquista' }
+      ],
+      ocs: [
+        { id: 10, gestor_id: 11, estoquista_id: 22, empresa_id: 1, status: OC_STATUS.OPEN, created_at: '2026-01-01T00:00:00.000Z' },
+        { id: 11, gestor_id: 11, estoquista_id: 22, empresa_id: 1, status: OC_STATUS.FINALIZED, created_at: '2026-02-01T00:00:00.000Z' }
+      ],
+      ocProdutos: [
+        { id: 100, oc_id: 10, descricao_snapshot: 'Produto A' },
+        { id: 101, oc_id: 10, descricao_snapshot: 'Produto B' },
+        { id: 102, oc_id: 10, descricao_snapshot: 'Produto C' },
+        { id: 103, oc_id: 10, descricao_snapshot: 'Produto D' }
+      ],
+      ocLocalizacoes: [
+        { id: 1000, oc_produto_id: 100 },
+        { id: 1001, oc_produto_id: 100 },
+        { id: 1010, oc_produto_id: 101 },
+        { id: 1011, oc_produto_id: 101 },
+        { id: 1012, oc_produto_id: 101 },
+        { id: 1020, oc_produto_id: 102 },
+        { id: 1021, oc_produto_id: 102 },
+        { id: 1022, oc_produto_id: 102 },
+        { id: 1023, oc_produto_id: 102 },
+        { id: 1030, oc_produto_id: 103 },
+        { id: 1031, oc_produto_id: 103 }
+      ],
+      ocAssignments: [
+        { id: 500, oc_id: 10, ciclo: 1, fase: 'contagem', estoquista_id: 22, status: 'finalizado', created_at: '2026-03-01T00:00:00.000Z' },
+        { id: 501, oc_id: 10, ciclo: 2, fase: 'recontagem', estoquista_id: 33, status: 'ativo', created_at: '2026-04-01T00:00:00.000Z' }
+      ],
+      ocAssignmentProdutos: [
+        { assignment_id: 500, oc_produto_id: 100 },
+        { assignment_id: 500, oc_produto_id: 101 },
+        { assignment_id: 500, oc_produto_id: 102 },
+        { assignment_id: 500, oc_produto_id: 103 },
+        { assignment_id: 501, oc_produto_id: 101 },
+        { assignment_id: 501, oc_produto_id: 103 }
+      ],
+      counts: [
+        { id: 800, oc_id: 10, assignment_id: 500, oc_localizacao_id: 1000, created_at: '2026-03-02T00:00:00.000Z' },
+        { id: 801, oc_id: 10, assignment_id: 500, oc_localizacao_id: 1010, created_at: '2026-03-02T00:00:00.000Z' },
+        { id: 900, oc_id: 10, assignment_id: 501, oc_localizacao_id: 1010, created_at: '2026-04-02T00:00:00.000Z' },
+        { id: 901, oc_id: 10, assignment_id: 501, oc_localizacao_id: 1030, created_at: '2026-04-02T00:00:00.000Z' }
+      ]
+    });
+    const { service } = createService({ repository });
+
+    const result = await service.listMyGestorOcs({ user: gestor, empresaId: 1 });
+
+    expect(result.map((oc) => oc.id)).toEqual([10, 11]);
+    expect(result[0]).toMatchObject({
+      qtd: 4,
+      assignment_ciclo: 2,
+      assignment_fase: 'recontagem',
+      assignment_status: 'ativo',
+      estoquista_nome: 'Responsavel recontagem',
+      total_localizacoes: 5,
+      localizacoes_contadas: 2,
+      ultima_movimentacao_em: '2026-04-02T00:00:00.000Z'
+    });
+  });
+
+  it('gestao preserva criador, responsavel e recontagem no fallback legado isolado por filial', async () => {
+    const repository = createInMemoryOcRepository({
+      users: [
+        { id: 11, nome: 'Criador A', role: 'gestor' },
+        { id: 12, nome: 'Gestor visualizador', role: 'gestor' },
+        { id: 22, nome: 'Responsavel legado', role: 'estoquista' }
+      ],
+      ocs: [
+        { id: 20, gestor_id: 11, estoquista_id: 22, empresa_id: 1, status: OC_STATUS.OPEN },
+        { id: 21, gestor_id: 11, estoquista_id: 22, empresa_id: 2, status: OC_STATUS.OPEN }
+      ],
+      items: [
+        { id: 200, oc_id: 20, produto: 'Produto legado', status: ITEM_STATUS.RECOUNT },
+        { id: 210, oc_id: 21, produto: 'Outra filial', status: ITEM_STATUS.RECOUNT }
+      ]
+    });
+    const { service } = createService({ repository });
+
+    const result = await service.listMyGestorOcs({
+      user: { id: 12, role: 'gestor' },
+      empresaId: 1
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      id: 20,
+      qtd: 1,
+      criador_nome: 'Criador A',
+      estoquista_nome: 'Responsavel legado',
+      total_localizacoes: 1,
+      localizacoes_contadas: 0,
+      has_legacy_recount: true
+    });
+  });
+
   it('gestor lista, aprova e solicita recontagem por filial sem alterar o criador', async () => {
     const repository = createInMemoryOcRepository({
       users: [

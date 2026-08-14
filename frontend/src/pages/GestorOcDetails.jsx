@@ -1,6 +1,6 @@
 import Layout from "../components/Layout";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
+import { Navigate, useParams } from "react-router-dom";
 import BackButton from "../components/BackButton";
 import DataState from "../components/ui/DataState";
 import PageHeader from "../components/ui/PageHeader";
@@ -30,11 +30,9 @@ import "../styles/oc.css";
 
 function GestorOcDetails() {
   const { id } = useParams();
-  const navigate = useNavigate();
-  const location = useLocation();
   const { user } = useAuth();
   const { activeEmpresa } = useEmpresa();
-  const { canApproveOc, canViewGestorOcs } = usePermissions();
+  const { canViewGestorOcs } = usePermissions();
   const { fetchGestorOCs, fetchOcItems } = useOCs();
   const { fetchProdutos, getLocalizacoesPorProduto } = useProdutos();
   const { showToast } = useToast();
@@ -44,6 +42,7 @@ function GestorOcDetails() {
   const [detailModal, setDetailModal] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  const [loadedEmpresaId, setLoadedEmpresaId] = useState(null);
 
   useEffect(() => {
     const empresaIdAtLoad = activeEmpresa?.id || null;
@@ -56,6 +55,7 @@ function GestorOcDetails() {
       setItems([]);
       setProdutosExterno([]);
       setDetailModal(null);
+      setLoadedEmpresaId(null);
 
       try {
         const ocsData = await fetchGestorOCs({
@@ -74,6 +74,7 @@ function GestorOcDetails() {
           setOc(null);
           setItems([]);
           setProdutosExterno([]);
+          setLoadedEmpresaId(empresaIdAtLoad);
           return;
         }
 
@@ -90,6 +91,7 @@ function GestorOcDetails() {
 
         setItems(asArray(itemsData));
         setProdutosExterno(asArray(produtosData));
+        setLoadedEmpresaId(empresaIdAtLoad);
       } catch (error) {
         if (!isCurrentRequest || empresaIdAtLoad !== (activeEmpresa?.id || null)) {
           return;
@@ -98,6 +100,7 @@ function GestorOcDetails() {
         const message = getFeedbackErrorMessage(error, feedbackMessages.oc.loadDetailsError);
         setOc(null);
         setItems([]);
+        setLoadedEmpresaId(empresaIdAtLoad);
         setLoadError(message);
         showToast(message, "error");
       } finally {
@@ -129,19 +132,12 @@ function GestorOcDetails() {
   const summary = useMemo(() => {
     return summarizeOcItems(items);
   }, [items]);
+  const isCurrentEmpresaLoaded = loadedEmpresaId === (activeEmpresa?.id || null);
+  const effectiveLoading = loading || !isCurrentEmpresaLoaded;
 
   const groupedItems = useMemo(() => {
     return groupItemsForGestorDetails(items, produtosExterno, getLocalizacoesPorProduto);
   }, [getLocalizacoesPorProduto, items, produtosExterno]);
-
-  const handleGoToApproval = useCallback(() => {
-    navigate("/aprovacao", {
-      state: {
-        from: location.pathname,
-        selectedOcId: id
-      }
-    });
-  }, [id, location.pathname, navigate]);
 
   const openLotDetails = useCallback((item) => {
     if (!item) {
@@ -173,22 +169,20 @@ function GestorOcDetails() {
         />
 
         <DataState
-          loading={loading}
+          loading={effectiveLoading}
           error={loadError}
-          empty={!oc}
+          empty={!isCurrentEmpresaLoaded || !oc}
           loadingTitle="Carregando detalhes da OC"
           loadingMessage="Buscando resumo, itens e localizações da ordem."
           errorTitle="Não foi possível carregar a OC"
           emptyTitle="OC não localizada"
           emptyMessage="A ordem solicitada não foi encontrada para este usuário."
         >
-          {oc ? (
+          {isCurrentEmpresaLoaded && oc ? (
             <>
               <GestorOcSummaryPanel
                 oc={oc}
                 summary={summary}
-                canApproveOc={canApproveOc}
-                onGoToApproval={handleGoToApproval}
               />
 
               <GestorOcItemsTable

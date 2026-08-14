@@ -10,8 +10,12 @@ function GestorOverviewStats({ stats }) {
         <strong>{safeStats.total}</strong>
       </Panel>
       <Panel className="gestor-overview-card">
-        <span className="gestor-overview-label">Em aberto</span>
-        <strong>{safeStats.abertas}</strong>
+        <span className="gestor-overview-label">Em contagem</span>
+        <strong>{safeStats.emContagem}</strong>
+      </Panel>
+      <Panel className="gestor-overview-card">
+        <span className="gestor-overview-label">Em recontagem</span>
+        <strong>{safeStats.recontagem}</strong>
       </Panel>
       <Panel className="gestor-overview-card">
         <span className="gestor-overview-label">Em aprovação</span>
