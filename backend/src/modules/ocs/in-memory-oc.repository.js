@@ -393,6 +393,18 @@ function createInMemoryOcRepository({
             const assignment = currentState.ocAssignments.find(
               (item) => Number(item.oc_id) === Number(oc.id) && item.status === 'ativo'
             );
+            const movementDates = [
+              oc.created_at,
+              oc.updated_at,
+              assignment?.created_at,
+              ...currentState.counts
+                .filter((count) => Number(count.oc_id) === Number(oc.id))
+                .filter((count) => !assignment || Number(count.assignment_id) === Number(assignment.id))
+                .map((count) => count.created_at)
+            ].filter(Boolean).sort();
+            const estoquista = currentState.users.find(
+              (user) => Number(user.id) === Number(assignment?.estoquista_id || oc.estoquista_id)
+            );
 
             if (locations.length > 0) {
               return {
@@ -403,17 +415,30 @@ function createInMemoryOcRepository({
                     Number(count.assignment_id) === Number(assignment?.id) &&
                     Number(count.oc_localizacao_id) === Number(localizacao.id)
                   )
-                ).length
+                ).length,
+                estoquista_nome: estoquista?.nome || null,
+                ultima_movimentacao_em: movementDates.at(-1) || null
               };
             }
 
             return {
               ...clone(oc),
               qtd: ocItems.filter((item) => item.status !== itemStatus.approved).length,
-              qtd_contados: ocItems.filter((item) => item.status === itemStatus.counted).length
+              qtd_contados: ocItems.filter((item) => item.status === itemStatus.counted).length,
+              estoquista_nome: estoquista?.nome || null,
+              ultima_movimentacao_em: movementDates.at(-1) || null
             };
           })
-          .sort((a, b) => Number(b.id) - Number(a.id));
+          .sort((a, b) => {
+            const pendingDiff = Number(a.qtd_contados >= a.qtd) - Number(b.qtd_contados >= b.qtd);
+            if (pendingDiff) {
+              return pendingDiff;
+            }
+
+            const dateDiff = new Date(b.ultima_movimentacao_em || 0)
+              - new Date(a.ultima_movimentacao_em || 0);
+            return dateDiff || Number(b.id) - Number(a.id);
+          });
       },
 
       async listAdminDashboardRows({ empresaId }) {
@@ -678,6 +703,8 @@ function createInMemoryOcRepository({
                 id: localizacao.id,
                 oc_produto_id: localizacao.oc_produto_id,
                 endereco: localizacao.endereco_snapshot,
+                codigo_barras_snapshot: localizacao.codigo_barras_snapshot || null,
+                validade_snapshot: localizacao.validade_snapshot || null,
                 status: count ? 'contado' : 'pendente',
                 quantidade: count?.quantidade ?? null,
                 lote: count?.lote ?? null

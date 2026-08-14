@@ -153,6 +153,7 @@ function MinhasOCs() {
             <MinhaOcCard
               key={oc.id}
               oc={oc}
+              responsibleName={user?.nome}
               canFinalizeOc={canFinalizeOc}
               finalizingId={finalizingId}
               onOpenOc={handleOpenOc}
@@ -163,9 +164,9 @@ function MinhasOCs() {
 
         <ConfirmModal
           open={Boolean(ocToFinalize)}
-          title="Finalizar OC"
+          title="Finalizar contagem"
           message={feedbackMessages.oc.confirmFinalize}
-          confirmLabel={finalizingId ? "Finalizando..." : "Finalizar"}
+          confirmLabel={finalizingId ? "Finalizando..." : "Finalizar contagem"}
           cancelLabel="Cancelar"
           variant="primary"
           loading={Boolean(finalizingId)}

@@ -1005,7 +1005,13 @@ function createOcService({ repository, audit = noopAudit } = {}) {
             produto: product.descricao,
             descricao: product.descricao,
             endereco: location.endereco,
-            location: { endereco: location.endereco },
+            codigo_barras_snapshot: location.codigo_barras_snapshot || null,
+            validade_snapshot: location.validade_snapshot || null,
+            location: {
+              endereco: location.endereco,
+              codigo_barras: location.codigo_barras_snapshot || null,
+              validade: location.validade_snapshot || null
+            },
             status: location.status,
             saldo_contado: location.quantidade ?? null,
             quantidade: location.quantidade ?? null,

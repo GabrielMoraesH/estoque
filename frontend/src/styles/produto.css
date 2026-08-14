@@ -93,6 +93,22 @@
   gap: 16px;
 }
 
+.oc-operational-progress {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.oc-operational-progress p {
+  margin: 4px 0 0;
+}
+
+.oc-progress-hint {
+  flex-basis: 100%;
+  color: #475569;
+}
+
 .location-status-contado {
   border-color: #22c55e;
   background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
@@ -105,6 +121,15 @@
 }
 
 @media (max-width: 768px) {
+  .oc-operational-progress {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .oc-operational-progress .primary-button {
+    width: 100%;
+    min-height: 46px;
+  }
   .card-produto {
     padding: 18px 16px;
     margin-bottom: 0;

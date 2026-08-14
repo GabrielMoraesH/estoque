@@ -4,6 +4,8 @@ import { Navigate, useLocation, useNavigate, useParams } from "react-router-dom"
 import BackButton from "../components/BackButton";
 import DataState from "../components/ui/DataState";
 import PageHeader from "../components/ui/PageHeader";
+import Panel from "../components/ui/Panel";
+import ConfirmModal from "../components/ui/ConfirmModal";
 import ProductCountingSection from "../components/products/ProductCountingSection";
 import OcEmpresaBadge from "../components/ocs/OcEmpresaBadge";
 import useAuth from "../hooks/useAuth";
@@ -28,9 +30,9 @@ function OcDetails() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
-  const { canViewCountingItem } = usePermissions();
+  const { canFinalizeOc, canViewCountingItem } = usePermissions();
   const { activeEmpresa } = useEmpresa();
-  const { fetchEstoquistaOCs, fetchOcItems } = useOCs();
+  const { fetchEstoquistaOCs, fetchOcItems, finalizeOc } = useOCs();
   const { fetchProdutos, getLocalizacoesPorProduto } = useProdutos();
   const { showToast } = useToast();
   const [oc, setOc] = useState(null);
@@ -39,6 +41,8 @@ function OcDetails() {
   const [selectedProduct, setSelectedProduct] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  const [finalizing, setFinalizing] = useState(false);
+  const [showFinalizeConfirm, setShowFinalizeConfirm] = useState(false);
 
   useEffect(() => {
     const empresaIdAtLoad = activeEmpresa?.id || null;
@@ -139,6 +143,12 @@ function OcDetails() {
     );
   }, [getLocalizacoesPorProduto, items, produtosExterno, selectedProduct]);
 
+  const progress = useMemo(() => ({
+    total: items.length,
+    counted: items.filter((item) => item?.status === "contado").length
+  }), [items]);
+  const readyToFinalize = progress.total > 0 && progress.counted === progress.total;
+
   const handleSelectedProductChange = useCallback((e) => {
     setSelectedProduct(e.target.value);
   }, []);
@@ -160,6 +170,21 @@ function OcDetails() {
     });
   }, [id, location.state?.from, navigate, selectedProduct]);
 
+  const handleFinalize = useCallback(async () => {
+    if (!readyToFinalize || finalizing) return;
+    setFinalizing(true);
+    try {
+      await finalizeOc(id);
+      showToast(feedbackMessages.oc.finalizeSuccess);
+      navigate("/minhas-ocs", { replace: true });
+    } catch (error) {
+      showToast(getFeedbackErrorMessage(error, feedbackMessages.oc.finalizeError), "error");
+    } finally {
+      setFinalizing(false);
+      setShowFinalizeConfirm(false);
+    }
+  }, [finalizeOc, finalizing, id, navigate, readyToFinalize, showToast]);
+
   if (!canViewCountingItem) {
     return <Navigate to="/dashboard" replace />;
   }
@@ -178,6 +203,14 @@ function OcDetails() {
           <span>Empresa</span>
           <OcEmpresaBadge oc={oc} />
         </div>
+
+        {!loading && !loadError && (
+          <Panel className="oc-operational-progress">
+            <div><strong>Progresso da contagem</strong><p>{progress.counted} de {progress.total} localizações contadas</p></div>
+            {canFinalizeOc && <button className="primary-button" type="button" disabled={!readyToFinalize || finalizing} onClick={() => setShowFinalizeConfirm(true)}>{finalizing ? "Finalizando..." : "Finalizar contagem"}</button>}
+            {!readyToFinalize && progress.total > 0 && <p className="oc-progress-hint">Conclua as localizações pendentes para finalizar.</p>}
+          </Panel>
+        )}
 
         <DataState
           loading={loading}
@@ -198,6 +231,7 @@ function OcDetails() {
             onOpenItem={handleOpenItem}
           />
         </DataState>
+        <ConfirmModal open={showFinalizeConfirm} title="Finalizar contagem" message="Confirma a finalização desta contagem?" confirmLabel={finalizing ? "Finalizando..." : "Finalizar contagem"} cancelLabel="Cancelar" variant="primary" loading={finalizing} onCancel={() => !finalizing && setShowFinalizeConfirm(false)} onConfirm={handleFinalize} />
       </div>
     </Layout>
   );

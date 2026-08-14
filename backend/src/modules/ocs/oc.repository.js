@@ -269,7 +269,17 @@ function createOcRepository(db = pool) {
                   ELSE COUNT(oc_items.id) FILTER (WHERE oc_items.status = $3)
                 END::int AS qtd_contados,
                 empresas.codigo AS empresa_codigo,
-                empresas.nome AS empresa_nome
+                empresas.nome AS empresa_nome,
+                responsavel.nome AS estoquista_nome,
+                NULLIF(
+                  GREATEST(
+                    COALESCE(MAX(active_counts.created_at), '-infinity'::timestamptz),
+                    COALESCE(MAX(oc_assignments.created_at), '-infinity'::timestamptz),
+                    COALESCE(ocs.created_at, '-infinity'::timestamptz),
+                    COALESCE(ocs.updated_at, '-infinity'::timestamptz)
+                  ),
+                  '-infinity'::timestamptz
+                ) AS ultima_movimentacao_em
          FROM ocs
          LEFT JOIN oc_items ON oc_items.oc_id = ocs.id
          LEFT JOIN oc_assignments ON oc_assignments.oc_id = ocs.id
@@ -285,6 +295,7 @@ function createOcRepository(db = pool) {
          LEFT JOIN contagens active_counts ON active_counts.assignment_id = oc_assignments.id
           AND active_counts.oc_localizacao_id = oc_localizacoes.id
          LEFT JOIN empresas ON empresas.id = ocs.empresa_id
+         LEFT JOIN users responsavel ON responsavel.id = $1
          WHERE (
              (
                EXISTS (SELECT 1 FROM oc_produtos model_check WHERE model_check.oc_id = ocs.id)
@@ -297,8 +308,19 @@ function createOcRepository(db = pool) {
            )
            AND ocs.empresa_id = $4
            AND COALESCE(ocs.status, $5) NOT IN ($6, $7)
-         GROUP BY ocs.id, empresas.codigo, empresas.nome
-         ORDER BY ocs.id DESC`,
+         GROUP BY ocs.id, empresas.codigo, empresas.nome, responsavel.nome
+         ORDER BY
+           CASE
+             WHEN COUNT(DISTINCT oc_localizacoes.id) > 0
+               THEN CASE WHEN COUNT(DISTINCT active_counts.id) < COUNT(DISTINCT oc_localizacoes.id) THEN 0 ELSE 1 END
+             ELSE CASE
+               WHEN COUNT(oc_items.id) FILTER (WHERE oc_items.status = $3)
+                  < COUNT(oc_items.id) FILTER (WHERE oc_items.status <> $2)
+               THEN 0 ELSE 1
+             END
+           END ASC,
+           ultima_movimentacao_em DESC NULLS LAST,
+           ocs.id DESC`,
         [
           estoquistaId,
           itemStatus.approved,
@@ -718,6 +740,8 @@ function createOcRepository(db = pool) {
         `SELECT oc_localizacoes.id,
                 oc_localizacoes.oc_produto_id,
                 oc_localizacoes.endereco_snapshot AS endereco,
+                oc_localizacoes.codigo_barras_snapshot,
+                oc_localizacoes.validade_snapshot,
                 CASE WHEN own_count.id IS NULL THEN 'pendente' ELSE 'contado' END AS status,
                 own_count.quantidade,
                 own_count.lote

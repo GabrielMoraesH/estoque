@@ -1705,6 +1705,27 @@ describe('OcService unitario com repository mockado', () => {
     })).resolves.toEqual([]);
   });
 
+  it('prioriza trabalho pendente antes da movimentacao recente em Minhas OCs in-memory', async () => {
+    const repository = createInMemoryOcRepository({
+      ocs: [
+        { id: 70, gestor_id: 11, estoquista_id: 22, empresa_id: 1, status: OC_STATUS.OPEN, updated_at: '2026-01-01T00:00:00.000Z' },
+        { id: 71, gestor_id: 11, estoquista_id: 22, empresa_id: 1, status: OC_STATUS.OPEN, updated_at: '2026-02-01T00:00:00.000Z' }
+      ],
+      items: [
+        { id: 700, oc_id: 70, status: ITEM_STATUS.PENDING },
+        { id: 710, oc_id: 71, status: ITEM_STATUS.COUNTED }
+      ]
+    });
+
+    const { service } = createService({ repository });
+    const rows = await service.listMyEstoquistaOcs({
+      user: { id: 22, role: 'estoquista' },
+      empresaId: 1
+    });
+
+    expect(rows.map((row) => row.id)).toEqual([70, 71]);
+  });
+
   it('consolida produto como contado somente quando todas as localizacoes forem contadas', async () => {
     const { repository, service, oc } = await createNewModelOcForCount();
     const [first, second] = repository.__getState().ocLocalizacoes;
@@ -1858,7 +1879,18 @@ describe('OcService unitario com repository mockado', () => {
   });
 
   it('lista operacao nova sem saldo e preserva snapshot/retomada', async () => {
-    const { repository, service, oc } = await createNewModelOcForCount();
+    const { repository, service, oc } = await createNewModelOcForCount({
+      items: [
+        {
+          produto: 'Dipirona 500mg',
+          codigo: 'DIP',
+          endereco: 'A1-01-01',
+          codigo_barras: '789123456789',
+          validade: '2026-12-01',
+          saldo_sistema: 10
+        }
+      ]
+    });
     const locationId = repository.__getState().ocLocalizacoes[0].id;
 
     await service.saveOcCount({
@@ -1871,6 +1903,8 @@ describe('OcService unitario com repository mockado', () => {
 
     expect(counted).toMatchObject({
       endereco: 'A1-01-01',
+      codigo_barras_snapshot: '789123456789',
+      validade_snapshot: '2026-12-01',
       status: ITEM_STATUS.COUNTED,
       quantidade: 7,
       lote: 'RET',

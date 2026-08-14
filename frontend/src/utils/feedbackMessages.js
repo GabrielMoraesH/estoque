@@ -27,9 +27,9 @@ export const feedbackMessages = {
     selectProduct: "Adicione pelo menos um produto para gerar a OC.",
     generateSuccess: "OC gerada com sucesso.",
     generateError: "Não foi possível gerar a OC.",
-    finalizeSuccess: "OC enviada para aprovação com sucesso.",
+    finalizeSuccess: "Contagem finalizada com sucesso.",
     finalizeError: "Não foi possível finalizar a OC.",
-    confirmFinalize: "Deseja finalizar esta OC e enviá-la para aprovação?"
+    confirmFinalize: "Confirma a finalização desta contagem?"
   },
   count: {
     requiredFields: "Informe a quantidade e o lote para registrar a contagem.",
