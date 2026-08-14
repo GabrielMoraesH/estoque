@@ -300,13 +300,16 @@ export function groupItemsForApproval(items, produtosExterno, getLocalizacoesPor
     }
 
     const produto = formatProductName(item);
+    const groupKey = item?.oc_produto_id ? `produto-${item.oc_produto_id}` : `legado-${produto}`;
     const externalLocations = getLocalizacoesPorProduto(produtosExterno, produto);
     const itemId = item?.oc_produto_id || item?.id;
     const snapshotLocations = asArray(item?.locations || item?.localizacoes);
 
-    if (!acc[produto]) {
-      acc[produto] = {
+    if (!acc[groupKey]) {
+      acc[groupKey] = {
         produto,
+        codigo: item?.codigo || null,
+        ocProdutoId: item?.oc_produto_id || null,
         saldoSistemaTotal: 0,
         saldoContadoTotal: 0,
         diferencaTotal: 0,
@@ -317,7 +320,7 @@ export function groupItemsForApproval(items, produtosExterno, getLocalizacoesPor
       };
     }
 
-    const group = acc[produto];
+    const group = acc[groupKey];
     const matchedLocation = findProdutoLocationForOcItem(
       item,
       externalLocations,
@@ -341,6 +344,7 @@ export function groupItemsForApproval(items, produtosExterno, getLocalizacoesPor
           endereco: formatLocationName(location?.endereco || location?.endereco_snapshot),
           lote: formatLot(location?.lote),
           saldoContado: toNumber(location?.saldo_contado),
+          history: asArray(location?.contagens),
           countingTrace: getCountingTraceFromHistory(location?.contagens, item)
         });
       });
@@ -364,6 +368,31 @@ export function groupItemsForApproval(items, produtosExterno, getLocalizacoesPor
     countingTrace: getCountingTraceFromRecords(group.countingRecords),
     diferencaTotal: group.saldoContadoTotal - group.saldoSistemaTotal
   }));
+}
+
+export function buildApprovalHistoryDetailRows(item) {
+  return getRenderableList(item?.locations)
+    .flatMap((location) => asArray(location?.history).map((count) => ({
+      ...count,
+      endereco: location?.endereco
+    })))
+    .sort((a, b) => {
+      const cycleDiff = toNumber(a?.ciclo) - toNumber(b?.ciclo);
+      if (cycleDiff !== 0) return cycleDiff;
+      const dateDiff = (toTimestamp(a?.created_at) || 0) - (toTimestamp(b?.created_at) || 0);
+      return dateDiff || toNumber(a?.id) - toNumber(b?.id);
+    })
+    .map((count) => ({
+      principal: `Ciclo ${toNumber(count?.ciclo)} — ${count?.fase === "recontagem" ? "Recontagem" : "Contagem"}`,
+      secondary: [
+        `Responsável: ${count?.usuario_nome || "Não informado"}`,
+        `Localização: ${formatLocationName(count?.endereco)}`,
+        `Quantidade: ${toNumber(count?.quantidade)}`,
+        `Lote: ${formatLot(count?.lote)}`,
+        `Data: ${count?.created_at ? new Date(count.created_at).toLocaleString("pt-BR") : "Não informada"}`,
+        `Assignment: ${count?.assignment_status || "Não informado"}`
+      ].join(" · ")
+    }));
 }
 
 export function getConsolidatedItemStatus(statuses) {

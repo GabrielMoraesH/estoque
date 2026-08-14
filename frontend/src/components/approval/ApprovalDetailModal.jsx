@@ -38,12 +38,16 @@ function ApprovalDetailModal({ detailModal, onClose }) {
             className="aprovacao-close-button"
             type="button"
             onClick={onClose}
+            autoFocus
           >
             Fechar
           </button>
         </div>
 
         <div className="aprovacao-modal-list">
+          {rows.length === 0 && (
+            <p className="aprovacao-modal-empty" role="status">Nenhum registro histórico disponível.</p>
+          )}
           {rows.map((row, index) => (
             <div key={`${row?.principal || "detail"}-${index}`} className="aprovacao-modal-item">
               <strong>{row?.principal || "Não informado"}</strong>

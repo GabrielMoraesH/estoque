@@ -740,7 +740,11 @@ function createInMemoryOcRepository({
                         created_at: count.created_at || null
                       };
                     })
-                    .sort((a, b) => Number(a.ciclo) - Number(b.ciclo) || Number(a.id) - Number(b.id));
+                    .sort((a, b) =>
+                      Number(a.ciclo) - Number(b.ciclo) ||
+                      new Date(a.created_at || 0) - new Date(b.created_at || 0) ||
+                      Number(a.id) - Number(b.id)
+                    );
                   const vigente = history.filter((count) => count.assignment_status === 'finalizado').sort(
                     (a, b) => Number(b.ciclo) - Number(a.ciclo) || Number(b.id) - Number(a.id)
                   )[0] || null;
@@ -766,6 +770,7 @@ function createInMemoryOcRepository({
                 id: produto.id,
                 oc_id: produto.oc_id,
                 oc_produto_id: produto.id,
+                codigo: produto.codigo || null,
                 produto: produto.descricao_snapshot,
                 descricao: produto.descricao_snapshot,
                 saldo_sistema: produto.saldo_sistema_snapshot,
@@ -1125,6 +1130,18 @@ function listApproval({ currentState, empresaId, openStatus, waitingApprovalStat
       );
       const ocItems = currentState.items.filter((item) => Number(item.oc_id) === Number(oc.id));
       const products = currentState.ocProdutos.filter((item) => Number(item.oc_id) === Number(oc.id));
+      const movementDates = [
+        oc.created_at,
+        oc.updated_at,
+        ...currentState.counts
+          .filter((count) => Number(count.oc_id) === Number(oc.id))
+          .map((count) => count.created_at),
+        ...currentState.ocAssignments
+          .filter((assignment) => Number(assignment.oc_id) === Number(oc.id))
+          .flatMap((assignment) => [assignment.created_at, assignment.finalizado_em])
+      ]
+        .filter(Boolean)
+        .sort((a, b) => new Date(a) - new Date(b));
 
       return {
         ...clone(oc),
@@ -1132,10 +1149,14 @@ function listApproval({ currentState, empresaId, openStatus, waitingApprovalStat
         gestor_nome: gestor?.nome || null,
         estoquista_nome: estoquista?.nome || null,
         responsavel_atual_id: lastAssignment?.estoquista_id || oc.estoquista_id,
-        primeira_contagem_estoquista_id: firstAssignment?.estoquista_id || null
+        primeira_contagem_estoquista_id: firstAssignment?.estoquista_id || null,
+        ultima_movimentacao_em: movementDates.at(-1) || null
       };
     })
-    .sort((a, b) => Number(b.id) - Number(a.id));
+    .sort((a, b) => {
+      const dateDiff = new Date(b.ultima_movimentacao_em || 0) - new Date(a.ultima_movimentacao_em || 0);
+      return dateDiff || Number(b.id) - Number(a.id);
+    });
 }
 
 module.exports = createInMemoryOcRepository;

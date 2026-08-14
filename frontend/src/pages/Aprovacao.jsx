@@ -22,6 +22,7 @@ import { formatProductName } from "../utils/formatters";
 import {
   asArray,
   buildApprovalLocationDetailRows,
+  buildApprovalHistoryDetailRows,
   buildLocationLotDetailRows,
   getApprovalReviewItems,
   groupItemsForApproval
@@ -178,6 +179,7 @@ function Aprovacao() {
       return;
     }
 
+    const empresaIdAtLoad = activeEmpresa?.id || null;
     setOpeningDetailsId(oc.id);
     setSelectedOC(oc);
     setSelectedItems([]);
@@ -188,16 +190,20 @@ function Aprovacao() {
 
     try {
       const items = await fetchOcItems(oc.id);
+      if (empresaIdAtLoad !== activeEmpresaIdRef.current) return;
       setSelectedItems(getApprovalReviewItems(items));
     } catch (error) {
+      if (empresaIdAtLoad !== activeEmpresaIdRef.current) return;
       const message = getFeedbackErrorMessage(error, feedbackMessages.approval.loadDetailsError);
       setDetailsError(message);
       showToast(message, "error");
     } finally {
-      setDetailsLoading(false);
-      setOpeningDetailsId(null);
+      if (empresaIdAtLoad === activeEmpresaIdRef.current) {
+        setDetailsLoading(false);
+        setOpeningDetailsId(null);
+      }
     }
-  }, [approvingId, confirmation, detailsLoading, fetchOcItems, recountModal, recounting, showToast]);
+  }, [activeEmpresa?.id, approvingId, confirmation, detailsLoading, fetchOcItems, recountModal, recounting, showToast]);
 
   useEffect(() => {
     const selectedOcId = location.state?.selectedOcId;
@@ -450,6 +456,14 @@ function Aprovacao() {
     });
   }, []);
 
+  const openHistoryDetails = useCallback((item) => {
+    if (!item) return;
+    setDetailModal({
+      title: `Histórico de ${formatProductName(item, "produto")}`,
+      rows: buildApprovalHistoryDetailRows(item)
+    });
+  }, []);
+
   const handleCloseDetailModal = useCallback(() => {
     setDetailModal(null);
   }, []);
@@ -492,6 +506,7 @@ function Aprovacao() {
           onToggleRecountGroup={handleToggleRecountGroup}
           onOpenLocationDetails={openLocationDetails}
           onOpenLotDetails={openLotDetails}
+          onOpenHistoryDetails={openHistoryDetails}
           onClose={handleCloseDetails}
           onSendToRecount={handleSendToRecount}
         />

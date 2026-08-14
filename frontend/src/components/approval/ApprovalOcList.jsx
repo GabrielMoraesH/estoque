@@ -2,6 +2,7 @@ import { memo, useCallback } from "react";
 import DataState from "../ui/DataState";
 import {
   formatOcCode,
+  formatDateTime,
   formatQuantity,
   formatResponsibleName,
   getOcStatusLabel
@@ -41,7 +42,9 @@ const ApprovalOcCard = memo(function ApprovalOcCard({
         <p className="oc-codigo">OC {formatOcCode(oc?.id)}</p>
         <div className="oc-meta-row">
           <p className="oc-qtd">Produtos contados: {formatQuantity(oc?.qtd)}</p>
-          <p className="oc-tempo">Estoquista: {formatResponsibleName(oc?.estoquista_nome)}</p>
+          <p className="oc-tempo">Criador: {formatResponsibleName(oc?.gestor_nome)}</p>
+          <p className="oc-tempo">Responsável operacional: {formatResponsibleName(oc?.estoquista_nome)}</p>
+          <p className="oc-tempo">Última movimentação: {formatDateTime(oc?.ultima_movimentacao_em || oc?.updated_at)}</p>
         </div>
       </div>
 

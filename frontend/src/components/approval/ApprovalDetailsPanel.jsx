@@ -21,7 +21,8 @@ const ApprovalDetailsRow = memo(function ApprovalDetailsRow({
   isMarkedForRecount,
   onToggleRecountGroup,
   onOpenLocationDetails,
-  onOpenLotDetails
+  onOpenLotDetails,
+  onOpenHistoryDetails
 }) {
   const handleOpenLocationDetails = useCallback(() => {
     if (item) {
@@ -40,12 +41,23 @@ const ApprovalDetailsRow = memo(function ApprovalDetailsRow({
     onToggleRecountGroup(itemIds);
   }, [item?.itemIds, onToggleRecountGroup]);
 
+  const handleOpenHistoryDetails = useCallback(() => {
+    if (item) onOpenHistoryDetails(item);
+  }, [item, onOpenHistoryDetails]);
+
+  const hasDifference = Number(item?.diferencaTotal) !== 0;
+
   return (
     <tr>
-      <td className="aprovacao-product-name">{formatProductName(item)}</td>
+      <td className="aprovacao-product-name">
+        {item?.codigo && <small>Código {item.codigo}</small>}
+        {formatProductName(item)}
+      </td>
       <td>{formatBalance(item?.saldoSistemaTotal)}</td>
       <td>{formatBalance(item?.saldoContadoTotal)}</td>
-      <td className="aprovacao-difference">{formatSignedNumber(item?.diferencaTotal)}</td>
+      <td className={`aprovacao-difference ${hasDifference ? "has-difference" : "no-difference"}`}>
+        {formatSignedNumber(item?.diferencaTotal)} — {hasDifference ? "Com divergência" : "Sem divergência"}
+      </td>
       <td>
         <button
           className="aprovacao-detail-button"
@@ -71,6 +83,9 @@ const ApprovalDetailsRow = memo(function ApprovalDetailsRow({
       </td>
       <td>
         <CountingTrace trace={item?.countingTrace} compact />
+        <button className="aprovacao-history-button" type="button" onClick={handleOpenHistoryDetails} disabled={interactionDisabled}>
+          Ver histórico completo
+        </button>
       </td>
       {canRequestRecount && (
         <td>
@@ -80,6 +95,7 @@ const ApprovalDetailsRow = memo(function ApprovalDetailsRow({
             checked={isMarkedForRecount}
             onChange={handleToggleRecountGroup}
             disabled={interactionDisabled}
+            aria-label={`Selecionar ${formatProductName(item)} para recontagem`}
           />
         </td>
       )}
@@ -94,7 +110,8 @@ const ApprovalDetailsMobileCard = memo(function ApprovalDetailsMobileCard({
   isMarkedForRecount,
   onToggleRecountGroup,
   onOpenLocationDetails,
-  onOpenLotDetails
+  onOpenLotDetails,
+  onOpenHistoryDetails
 }) {
   const handleOpenLocationDetails = useCallback(() => {
     if (item) {
@@ -113,10 +130,16 @@ const ApprovalDetailsMobileCard = memo(function ApprovalDetailsMobileCard({
     onToggleRecountGroup(itemIds);
   }, [item?.itemIds, onToggleRecountGroup]);
 
+  const handleOpenHistoryDetails = useCallback(() => {
+    if (item) onOpenHistoryDetails(item);
+  }, [item, onOpenHistoryDetails]);
+
+  const hasDifference = Number(item?.diferencaTotal) !== 0;
+
   return (
     <article className="aprovacao-mobile-card">
       <div className="aprovacao-mobile-card-header">
-        <strong>{formatProductName(item)}</strong>
+        <strong>{item?.codigo ? `${item.codigo} — ` : ""}{formatProductName(item)}</strong>
         <span className="aprovacao-item-status">{getItemStatusLabel(item?.status)}</span>
       </div>
 
@@ -131,7 +154,9 @@ const ApprovalDetailsMobileCard = memo(function ApprovalDetailsMobileCard({
         </div>
         <div className="aprovacao-mobile-metric">
           <span>Diferença</span>
-          <strong className="aprovacao-difference">{formatSignedNumber(item?.diferencaTotal)}</strong>
+          <strong className={`aprovacao-difference ${hasDifference ? "has-difference" : "no-difference"}`}>
+            {formatSignedNumber(item?.diferencaTotal)} — {hasDifference ? "Com divergência" : "Sem divergência"}
+          </strong>
         </div>
       </div>
 
@@ -155,6 +180,9 @@ const ApprovalDetailsMobileCard = memo(function ApprovalDetailsMobileCard({
         >
           Ver lotes
         </button>
+        <button className="aprovacao-detail-button" type="button" onClick={handleOpenHistoryDetails} disabled={interactionDisabled}>
+          Ver histórico completo
+        </button>
       </div>
 
       {canRequestRecount && (
@@ -165,6 +193,7 @@ const ApprovalDetailsMobileCard = memo(function ApprovalDetailsMobileCard({
             checked={isMarkedForRecount}
             onChange={handleToggleRecountGroup}
             disabled={interactionDisabled}
+            aria-label={`Selecionar ${formatProductName(item)} para recontagem`}
           />
           <span>Marcar grupo para recontagem</span>
         </label>
@@ -186,6 +215,7 @@ function ApprovalDetailsPanel({
   onToggleRecountGroup,
   onOpenLocationDetails,
   onOpenLotDetails,
+  onOpenHistoryDetails,
   onClose,
   onSendToRecount
 }) {
@@ -200,7 +230,7 @@ function ApprovalDetailsPanel({
     <Panel
       className="aprovacao-details"
       title={`Detalhes da OC ${formatOcCode(selectedOC?.id)}`}
-      subtitle={`Estoquista: ${formatResponsibleName(selectedOC?.estoquista_nome)}`}
+      subtitle={`Responsável operacional: ${formatResponsibleName(selectedOC?.estoquista_nome)}`}
       headerClassName="aprovacao-details-header"
       actions={(
         <button
@@ -221,6 +251,10 @@ function ApprovalDetailsPanel({
         <div>
           <span>OC</span>
           <strong>{formatOcCode(selectedOC?.id)}</strong>
+        </div>
+        <div>
+          <span>Criador</span>
+          <strong>{formatResponsibleName(selectedOC?.gestor_nome)}</strong>
         </div>
       </div>
 
@@ -262,6 +296,7 @@ function ApprovalDetailsPanel({
                     onToggleRecountGroup={onToggleRecountGroup}
                     onOpenLocationDetails={onOpenLocationDetails}
                     onOpenLotDetails={onOpenLotDetails}
+                    onOpenHistoryDetails={onOpenHistoryDetails}
                   />
                 ))}
               </tbody>
@@ -279,6 +314,7 @@ function ApprovalDetailsPanel({
                 onToggleRecountGroup={onToggleRecountGroup}
                 onOpenLocationDetails={onOpenLocationDetails}
                 onOpenLotDetails={onOpenLotDetails}
+                onOpenHistoryDetails={onOpenHistoryDetails}
               />
             ))}
           </div>

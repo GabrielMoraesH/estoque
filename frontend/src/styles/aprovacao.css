@@ -129,9 +129,42 @@
   color: #0f172a;
 }
 
+.aprovacao-product-name small {
+  display: block;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 800;
+}
+
 .aprovacao-difference {
   font-weight: 800;
   color: #223c79;
+}
+
+.aprovacao-difference.has-difference {
+  color: #b45309;
+}
+
+.aprovacao-difference.no-difference {
+  color: #166534;
+}
+
+.aprovacao-history-button {
+  display: block;
+  margin-top: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #223c79;
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.aprovacao-history-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .aprovacao-detail-button {
@@ -297,6 +330,11 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.aprovacao-modal-empty {
+  margin: 0;
+  color: #64748b;
 }
 
 .aprovacao-modal-item {

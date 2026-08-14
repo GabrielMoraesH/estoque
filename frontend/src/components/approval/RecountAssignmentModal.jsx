@@ -101,6 +101,7 @@ function RecountAssignmentModal({
             value={selectedEstoquistaId || ""}
             onChange={handleChange}
             disabled={isBusy || availableEstoquistas.length === 0}
+            autoFocus
           >
             <option value="">
               {loadingEstoquistas ? "Carregando estoquistas..." : "Selecione um estoquista"}

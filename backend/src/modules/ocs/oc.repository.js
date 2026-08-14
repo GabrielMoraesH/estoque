@@ -487,7 +487,8 @@ function createOcRepository(db = pool) {
                 COALESCE(latest_assignment.estoquista_id, ocs.estoquista_id) AS responsavel_atual_id,
                 first_assignment.estoquista_id AS primeira_contagem_estoquista_id,
                 empresas.codigo AS empresa_codigo,
-                empresas.nome AS empresa_nome
+                empresas.nome AS empresa_nome,
+                GREATEST(ocs.created_at, ocs.updated_at, movement.ultima_movimentacao_em) AS ultima_movimentacao_em
          FROM ocs
          LEFT JOIN oc_items ON oc_items.oc_id = ocs.id
          LEFT JOIN oc_produtos ON oc_produtos.oc_id = ocs.id
@@ -511,10 +512,26 @@ function createOcRepository(db = pool) {
          LEFT JOIN users gestor ON gestor.id = ocs.gestor_id
          LEFT JOIN users estoquista ON estoquista.id = ocs.estoquista_id
          LEFT JOIN empresas ON empresas.id = ocs.empresa_id
+         LEFT JOIN LATERAL (
+           SELECT MAX(events.event_at) AS ultima_movimentacao_em
+           FROM (
+             SELECT contagens.created_at AS event_at
+             FROM contagens
+             WHERE contagens.oc_id = ocs.id
+             UNION ALL
+             SELECT assignments.created_at
+             FROM oc_assignments assignments
+             WHERE assignments.oc_id = ocs.id
+             UNION ALL
+             SELECT assignments.finalizado_em
+             FROM oc_assignments assignments
+             WHERE assignments.oc_id = ocs.id
+           ) events
+         ) movement ON true
          WHERE COALESCE(ocs.status, $1) = $2
            AND ocs.empresa_id = $3
-         GROUP BY ocs.id, gestor.nome, estoquista.nome, latest_assignment_user.nome, latest_assignment.estoquista_id, first_assignment.estoquista_id, empresas.codigo, empresas.nome
-         ORDER BY ocs.id DESC`,
+         GROUP BY ocs.id, gestor.nome, estoquista.nome, latest_assignment_user.nome, latest_assignment.estoquista_id, first_assignment.estoquista_id, empresas.codigo, empresas.nome, movement.ultima_movimentacao_em
+         ORDER BY ultima_movimentacao_em DESC NULLS LAST, ocs.id DESC`,
         [openStatus, waitingApprovalStatus, empresaId]
       );
 
@@ -533,7 +550,8 @@ function createOcRepository(db = pool) {
                 COALESCE(latest_assignment.estoquista_id, ocs.estoquista_id) AS responsavel_atual_id,
                 first_assignment.estoquista_id AS primeira_contagem_estoquista_id,
                 empresas.codigo AS empresa_codigo,
-                empresas.nome AS empresa_nome
+                empresas.nome AS empresa_nome,
+                GREATEST(ocs.created_at, ocs.updated_at, movement.ultima_movimentacao_em) AS ultima_movimentacao_em
          FROM ocs
          LEFT JOIN oc_items ON oc_items.oc_id = ocs.id
          LEFT JOIN oc_produtos ON oc_produtos.oc_id = ocs.id
@@ -557,10 +575,26 @@ function createOcRepository(db = pool) {
          LEFT JOIN users gestor ON gestor.id = ocs.gestor_id
          LEFT JOIN users estoquista ON estoquista.id = ocs.estoquista_id
          LEFT JOIN empresas ON empresas.id = ocs.empresa_id
+         LEFT JOIN LATERAL (
+           SELECT MAX(events.event_at) AS ultima_movimentacao_em
+           FROM (
+             SELECT contagens.created_at AS event_at
+             FROM contagens
+             WHERE contagens.oc_id = ocs.id
+             UNION ALL
+             SELECT assignments.created_at
+             FROM oc_assignments assignments
+             WHERE assignments.oc_id = ocs.id
+             UNION ALL
+             SELECT assignments.finalizado_em
+             FROM oc_assignments assignments
+             WHERE assignments.oc_id = ocs.id
+           ) events
+         ) movement ON true
          WHERE COALESCE(ocs.status, $1) = $2
            AND ocs.empresa_id = $3
-         GROUP BY ocs.id, gestor.nome, estoquista.nome, latest_assignment_user.nome, latest_assignment.estoquista_id, first_assignment.estoquista_id, empresas.codigo, empresas.nome
-         ORDER BY ocs.id DESC`,
+         GROUP BY ocs.id, gestor.nome, estoquista.nome, latest_assignment_user.nome, latest_assignment.estoquista_id, first_assignment.estoquista_id, empresas.codigo, empresas.nome, movement.ultima_movimentacao_em
+         ORDER BY ultima_movimentacao_em DESC NULLS LAST, ocs.id DESC`,
         [openStatus, waitingApprovalStatus, empresaId]
       );
 
@@ -859,6 +893,7 @@ function createOcRepository(db = pool) {
          SELECT produtos.id,
                 produtos.oc_id,
                 produtos.id AS oc_produto_id,
+                produtos.codigo,
                 produtos.descricao_snapshot AS produto,
                 produtos.descricao_snapshot AS descricao,
                 produtos.saldo_sistema_snapshot AS saldo_sistema,
