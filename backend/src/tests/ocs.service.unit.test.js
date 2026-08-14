@@ -285,6 +285,89 @@ describe('OcService unitario com repository mockado', () => {
     expect(empresa6List.map((oc) => oc.codigo)).toEqual(['OC-D']);
   });
 
+  it('gestor lista, aprova e solicita recontagem por filial sem alterar o criador', async () => {
+    const repository = createInMemoryOcRepository({
+      users: [
+        { id: 1, nome: 'Admin A', role: 'admin', empresas: [{ id: 1 }] },
+        { id: 11, nome: 'Gestor B', role: 'gestor', empresas: [{ id: 1 }, { id: 6 }] },
+        { id: 12, nome: 'Gestor C', role: 'gestor', empresas: [{ id: 1 }] },
+        { id: 22, nome: 'Contador', role: 'estoquista', ativo: true, nivel_estoquista: 1, empresas: [{ id: 1 }] },
+        { id: 33, nome: 'Recontador', role: 'estoquista', ativo: true, nivel_estoquista: 2, empresas: [{ id: 1 }] }
+      ],
+      ocs: [
+        { id: 101, codigo: 'OC-ADMIN', gestor_id: 1, estoquista_id: 22, empresa_id: 1, status: OC_STATUS.WAITING_APPROVAL },
+        { id: 102, codigo: 'OC-OUTRO-GESTOR', gestor_id: 12, estoquista_id: 22, empresa_id: 1, status: OC_STATUS.WAITING_APPROVAL },
+        { id: 601, codigo: 'OC-OUTRA-EMPRESA', gestor_id: 12, estoquista_id: 22, empresa_id: 6, status: OC_STATUS.WAITING_APPROVAL }
+      ],
+      items: [
+        { id: 1001, oc_id: 101, produto: 'A', status: ITEM_STATUS.COUNTED },
+        { id: 1002, oc_id: 102, produto: 'B', status: ITEM_STATUS.COUNTED },
+        { id: 6001, oc_id: 601, produto: 'C', status: ITEM_STATUS.COUNTED }
+      ]
+    });
+    const { service } = createService({ repository });
+
+    const approvals = await service.listMyApprovalOcs({ user: gestor, empresaId: 1 });
+    expect(approvals.map((oc) => oc.codigo)).toEqual(['OC-OUTRO-GESTOR', 'OC-ADMIN']);
+    expect(approvals.find((oc) => oc.id === 101).gestor_nome).toBe('Admin A');
+    expect(approvals.find((oc) => oc.id === 102).gestor_nome).toBe('Gestor C');
+
+    await expect(service.approveOc({ user: gestor, empresaId: 1, ocId: 101 }))
+      .resolves.toEqual({ message: 'OC aprovada com sucesso' });
+    expect(repository.__getState().ocs.find((oc) => oc.id === 101)).toMatchObject({
+      gestor_id: 1,
+      status: OC_STATUS.FINALIZED
+    });
+
+    await expect(service.sendOcToRecount({
+      user: gestor,
+      empresaId: 1,
+      ocId: 102,
+      itemIds: [1002],
+      novoEstoquistaId: 33
+    })).resolves.toEqual({ message: 'Itens enviados para recontagem' });
+    expect(repository.__getState().ocs.find((oc) => oc.id === 102)).toMatchObject({
+      gestor_id: 12,
+      estoquista_id: 33,
+      status: OC_STATUS.OPEN
+    });
+
+    await expect(service.approveOc({ user: gestor, empresaId: 1, ocId: 601 }))
+      .rejects.toMatchObject({ statusCode: 404, errorCode: ERROR_CODES.NOT_FOUND });
+    await expect(service.sendOcToRecount({
+      user: gestor,
+      empresaId: 1,
+      ocId: 601,
+      itemIds: [6001],
+      novoEstoquistaId: 33
+    })).rejects.toMatchObject({ statusCode: 404, errorCode: ERROR_CODES.NOT_FOUND });
+  });
+
+  it('bloqueia estoquista nas operacoes administrativas de aprovacao e recontagem', async () => {
+    const repository = createRepositoryMock();
+    const { service } = createService({ repository });
+
+    await expect(service.approveOc({
+      user: estoquista,
+      empresaId: 1,
+      ocId: 55
+    })).rejects.toMatchObject({
+      statusCode: 403,
+      errorCode: ERROR_CODES.AUTHORIZATION_ERROR
+    });
+    await expect(service.sendOcToRecount({
+      user: estoquista,
+      empresaId: 1,
+      ocId: 55,
+      itemIds: [9],
+      novoEstoquistaId: 33
+    })).rejects.toMatchObject({
+      statusCode: 403,
+      errorCode: ERROR_CODES.AUTHORIZATION_ERROR
+    });
+    expect(repository.withTransaction).not.toHaveBeenCalled();
+  });
+
   it('bloqueia listagem de gestor para perfil sem permissao', async () => {
     const repository = createRepositoryMock();
     const { service } = createService({ repository });
@@ -2190,7 +2273,7 @@ describe('OcService unitario com repository mockado', () => {
     });
   });
 
-  it('dashboard gestor mostra decisao apenas das OCs que ele pode aprovar', async () => {
+  it('dashboard gestor inclui todas as OCs aguardando decisao na empresa ativa', async () => {
     const repository = createInMemoryOcRepository({
       users: [
         { id: 11, nome: 'Gestor A', role: 'gestor' },
@@ -2214,9 +2297,9 @@ describe('OcService unitario com repository mockado', () => {
     });
 
     expect(result.indicadores.total_ocs).toBe(2);
-    expect(result.indicadores.aguardando_aprovacao).toBe(1);
+    expect(result.indicadores.aguardando_aprovacao).toBe(2);
     expect(result.aguardando_aprovacao_filial).toBe(2);
-    expect(result.atencao_necessaria.map((item) => item.id)).toEqual([10]);
+    expect(result.atencao_necessaria.map((item) => item.id)).toEqual([11, 10]);
   });
 
   it('dashboard estoquista retorna somente tarefas proprias e sem campos sensiveis', async () => {

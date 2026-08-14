@@ -499,7 +499,7 @@ function createOcRepository(db = pool) {
       return result.rows;
     },
 
-    async listApprovalForGestor({ gestorId, empresaId, openStatus, waitingApprovalStatus }) {
+    async listApprovalForGestor({ empresaId, openStatus, waitingApprovalStatus }) {
       const result = await db.query(
         `SELECT ocs.*,
                 CASE
@@ -536,11 +536,10 @@ function createOcRepository(db = pool) {
          LEFT JOIN users estoquista ON estoquista.id = ocs.estoquista_id
          LEFT JOIN empresas ON empresas.id = ocs.empresa_id
          WHERE COALESCE(ocs.status, $1) = $2
-           AND ocs.gestor_id = $3
-           AND ocs.empresa_id = $4
+           AND ocs.empresa_id = $3
          GROUP BY ocs.id, gestor.nome, estoquista.nome, latest_assignment_user.nome, latest_assignment.estoquista_id, first_assignment.estoquista_id, empresas.codigo, empresas.nome
          ORDER BY ocs.id DESC`,
-        [openStatus, waitingApprovalStatus, gestorId, empresaId]
+        [openStatus, waitingApprovalStatus, empresaId]
       );
 
       return result.rows;

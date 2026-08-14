@@ -514,10 +514,9 @@ function createInMemoryOcRepository({
         });
       },
 
-      async listApprovalForGestor({ gestorId, empresaId, openStatus, waitingApprovalStatus }) {
+      async listApprovalForGestor({ empresaId, openStatus, waitingApprovalStatus }) {
         return listApproval({
           currentState,
-          gestorId,
           empresaId,
           openStatus,
           waitingApprovalStatus
@@ -1079,10 +1078,9 @@ function createInMemoryOcRepository({
   return createRepository(state);
 }
 
-function listApproval({ currentState, gestorId, empresaId, openStatus, waitingApprovalStatus }) {
+function listApproval({ currentState, empresaId, openStatus, waitingApprovalStatus }) {
   return currentState.ocs
     .filter((oc) => (oc.status || openStatus) === waitingApprovalStatus)
-    .filter((oc) => gestorId === undefined || Number(oc.gestor_id) === Number(gestorId))
     .filter((oc) => Number(oc.empresa_id) === Number(empresaId))
     .map((oc) => {
       const gestor = currentState.users.find((user) => Number(user.id) === Number(oc.gestor_id));

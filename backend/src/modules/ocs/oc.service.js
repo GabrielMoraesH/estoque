@@ -189,12 +189,8 @@ function createOcService({ repository, audit = noopAudit } = {}) {
     }
   }
 
-  function assertGestorOwnership(user, oc) {
-    if (isAdmin(user)) {
-      return;
-    }
-
-    if (!isGestor(user) || Number(oc.gestor_id) !== Number(user.id)) {
+  function assertAdministrativeApprovalRole(user) {
+    if (!isAdmin(user) && !isGestor(user)) {
       throw forbidden('Voce nao tem permissao para operar esta OC');
     }
   }
@@ -674,9 +670,7 @@ function createOcService({ repository, audit = noopAudit } = {}) {
   async function getDashboardSummary({ user, empresaId }) {
     if (isAdmin(user) || isGestor(user)) {
       const rows = await repository.listAdminDashboardRows({ empresaId });
-      const decisionRows = isAdmin(user)
-        ? rows
-        : rows.filter((row) => Number(row.gestor_id) === Number(user.id));
+      const decisionRows = rows;
       const waitingRows = rows.filter((row) => (row.status || OC_STATUS.OPEN) === OC_STATUS.WAITING_APPROVAL);
       const decisionWaitingRows = decisionRows.filter(
         (row) => (row.status || OC_STATUS.OPEN) === OC_STATUS.WAITING_APPROVAL
@@ -773,9 +767,8 @@ function createOcService({ repository, audit = noopAudit } = {}) {
     });
   }
 
-  function listApprovalForGestorInternal({ gestorId, empresaId }) {
+  function listApprovalForGestorInternal({ empresaId }) {
     return repository.listApprovalForGestor({
-      gestorId,
       empresaId,
       openStatus: OC_STATUS.OPEN,
       waitingApprovalStatus: OC_STATUS.WAITING_APPROVAL
@@ -791,7 +784,7 @@ function createOcService({ repository, audit = noopAudit } = {}) {
       throw forbidden('Voce nao tem permissao para acessar esta listagem');
     }
 
-    return listApprovalForGestorInternal({ gestorId: user.id, empresaId });
+    return listApprovalForGestorInternal({ empresaId });
   }
 
   async function listApprovalForGestor({ user, gestorId, empresaId }) {
@@ -800,14 +793,14 @@ function createOcService({ repository, audit = noopAudit } = {}) {
     }
 
     assertSameUserOrAdmin(user, gestorId);
-    return listApprovalForGestorInternal({ gestorId, empresaId });
+    return listApprovalForGestorInternal({ empresaId });
   }
 
   async function approveOc({ user, empresaId, ocId, auditContext }) {
+    assertAdministrativeApprovalRole(user);
     const oc = await repository.withTransaction(async (tx) => {
       const foundOc = await getOcOrFail(ocId, tx, { forUpdate: true });
       assertOcEmpresa(foundOc, empresaId);
-      assertGestorOwnership(user, foundOc);
       ensureOcWaitingApproval(foundOc);
       await ensureOcCompleteForApproval(ocId, tx);
 
@@ -838,6 +831,7 @@ function createOcService({ repository, audit = noopAudit } = {}) {
   }
 
   async function sendOcToRecount({ user, empresaId, ocId, itemIds, novoEstoquistaId, auditContext }) {
+    assertAdministrativeApprovalRole(user);
     if (!Array.isArray(itemIds) || itemIds.length === 0) {
       throw badRequest('Selecione ao menos um item para recontagem');
     }
@@ -851,7 +845,6 @@ function createOcService({ repository, audit = noopAudit } = {}) {
     const oc = await repository.withTransaction(async (tx) => {
       const foundOc = await getOcOrFail(ocId, tx, { forUpdate: true });
       assertOcEmpresa(foundOc, empresaId);
-      assertGestorOwnership(user, foundOc);
       ensureOcWaitingApproval(foundOc);
 
       if (await tx.ocHasNewModel(ocId)) {
