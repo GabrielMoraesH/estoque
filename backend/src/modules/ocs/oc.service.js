@@ -365,15 +365,24 @@ function createOcService({ repository, audit = noopAudit } = {}) {
 
     const isoDate = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
     if (isoDate) {
-      return text;
+      const year = Number(isoDate[1]);
+      const month = Number(isoDate[2]);
+      const day = Number(isoDate[3]);
+      const date = new Date(Date.UTC(year, month - 1, day));
+      if (date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day) {
+        return text;
+      }
     }
 
     const monthYear = text.match(/^(\d{2})\/(\d{4})$/);
     if (monthYear) {
-      return `${monthYear[2]}-${monthYear[1]}-01`;
+      const month = Number(monthYear[1]);
+      if (month >= 1 && month <= 12) {
+        return `${monthYear[2]}-${monthYear[1]}-01`;
+      }
     }
 
-    return null;
+    throw badRequest('Validade invalida. Use MM/AAAA ou AAAA-MM-DD');
   }
 
   function getProductIdentity(item) {
@@ -491,6 +500,10 @@ function createOcService({ repository, audit = noopAudit } = {}) {
   }
 
   async function createOcWithItems({ user, empresaId, payload, auditContext }) {
+    if (!isAdmin(user) && !isGestor(user)) {
+      throw forbidden('Voce nao tem permissao para gerar OC');
+    }
+
     const { estoquista_id, items } = payload;
 
     if (!estoquista_id) {
@@ -504,6 +517,7 @@ function createOcService({ repository, audit = noopAudit } = {}) {
     const groupedProducts = groupItemsByProduct(items);
 
     const oc = await repository.withTransaction(async (tx) => {
+      await assertUserHasEmpresaAccess(user.id, empresaId, tx);
       await assertEstoquistaAvailableForFirstCount(estoquista_id, tx);
       await assertUserHasEmpresaAccess(estoquista_id, empresaId, tx);
 

@@ -1176,6 +1176,65 @@ describe('OcService unitario com repository mockado', () => {
     expect(repository.createOc).not.toHaveBeenCalled();
   });
 
+  it('bloqueia criacao direta no service para estoquista', async () => {
+    const repository = createRepositoryMock();
+    const { service } = createService({ repository });
+
+    await expect(service.createOcWithItems({
+      user: estoquista,
+      empresaId: 1,
+      payload: {
+        estoquista_id: 22,
+        items: [{ produto: 'Seringa', codigo: 'SER', endereco: 'A1', saldo_sistema: 12 }]
+      }
+    })).rejects.toMatchObject({
+      statusCode: 403,
+      errorCode: ERROR_CODES.AUTHORIZATION_ERROR
+    });
+    expect(repository.withTransaction).not.toHaveBeenCalled();
+  });
+
+  it.each(['13/2027', '00/2027', 'abc', '2027-99-99'])(
+    'rejeita validade invalida %s antes de abrir a transacao',
+    async (validade) => {
+      const repository = createRepositoryMock();
+      const { service } = createService({ repository });
+
+      await expect(service.createOcWithItems({
+        user: gestor,
+        empresaId: 1,
+        payload: {
+          estoquista_id: 22,
+          items: [{ produto: 'Seringa', codigo: 'SER', endereco: 'A1', saldo_sistema: 12, validade }]
+        }
+      })).rejects.toMatchObject({
+        message: 'Validade invalida. Use MM/AAAA ou AAAA-MM-DD',
+        statusCode: 400
+      });
+      expect(repository.withTransaction).not.toHaveBeenCalled();
+    }
+  );
+
+  it('bloqueia criador sem acesso a empresa ativa no service', async () => {
+    const repository = createRepositoryMock({
+      userHasEmpresaAccess: jest.fn().mockImplementation((userId) => userId !== gestor.id)
+    });
+    const { service } = createService({ repository });
+
+    await expect(service.createOcWithItems({
+      user: gestor,
+      empresaId: 6,
+      payload: {
+        estoquista_id: 22,
+        items: [{ produto: 'Seringa', codigo: 'SER', endereco: 'A1', saldo_sistema: 12 }]
+      }
+    })).rejects.toMatchObject({
+      message: 'Usuario nao tem acesso a esta empresa',
+      statusCode: 403
+    });
+    expect(repository.createOc).not.toHaveBeenCalled();
+  });
+
   it('cria nova OC com 1 produto, 1 localizacao e assignment inicial', async () => {
     const repository = createInMemoryOcRepository({
       users: [

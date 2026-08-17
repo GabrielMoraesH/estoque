@@ -1,5 +1,5 @@
 import Layout from "../components/Layout";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useToast } from "../components/ToastProvider";
 import BackButton from "../components/BackButton";
@@ -18,14 +18,19 @@ import {
   getSelectedItemIdSet,
   groupProdutosByName
 } from "../utils/ocData";
+import { getProdutoIdentity } from "../contracts/produtosContract";
 import "../styles/app-pages.css";
 import "../styles/gerar-oc.css";
 
 function hasEmpresaAccess(estoquista, empresaId) {
   const empresas = Array.isArray(estoquista?.empresas) ? estoquista.empresas : [];
 
-  if (!empresaId || empresas.length === 0) {
+  if (!empresaId) {
     return true;
+  }
+
+  if (empresas.length === 0) {
+    return false;
   }
 
   return empresas.some((empresa) => Number(empresa?.id ?? empresa) === Number(empresaId));
@@ -58,6 +63,7 @@ function GerarOC() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [generating, setGenerating] = useState(false);
+  const generatingRef = useRef(false);
 
   useEffect(() => {
     const empresaIdAtLoad = activeEmpresa?.id || null;
@@ -114,6 +120,7 @@ function GerarOC() {
 
   const estoquistasPrimeiraContagem = useMemo(
     () => asArray(estoquistas).filter((estoquista) => (
+      estoquista?.role === "estoquista" &&
       estoquista?.ativo !== false &&
       Number(estoquista?.nivel_estoquista) === 1 &&
       hasEmpresaAccess(estoquista, activeEmpresa?.id)
@@ -132,33 +139,35 @@ function GerarOC() {
   }, []);
 
   const handleAddToCart = useCallback((produto) => {
-    if (!canCreateOc || generating) {
+    if (!canCreateOc || generatingRef.current) {
       return;
     }
 
-    if (!produto?.id) {
+    const produtoIdentity = getProdutoIdentity(produto);
+
+    if (!produtoIdentity) {
       return;
     }
 
-    if (cartItemIds.has(produto.id)) {
+    if (cartItemIds.has(produtoIdentity)) {
       showToast(feedbackMessages.oc.addDuplicateInfo, "info");
       return;
     }
 
     setCart((current) => [...asArray(current), produto]);
     showToast(feedbackMessages.oc.addSuccess);
-  }, [canCreateOc, cartItemIds, generating, showToast]);
+  }, [canCreateOc, cartItemIds, showToast]);
 
-  const handleRemoveFromCart = useCallback((id) => {
+  const handleRemoveFromCart = useCallback((identity) => {
     if (!canCreateOc || generating) {
       return;
     }
 
-    setCart((current) => asArray(current).filter((item) => item?.id !== id));
+    setCart((current) => asArray(current).filter((item) => getProdutoIdentity(item) !== identity));
   }, [canCreateOc, generating]);
 
   const handleGenerateOC = useCallback(async () => {
-    if (!canCreateOc || generating) {
+    if (!canCreateOc || generatingRef.current) {
       return;
     }
 
@@ -174,6 +183,7 @@ function GerarOC() {
       return;
     }
 
+    generatingRef.current = true;
     setGenerating(true);
 
     const itemsToCreate = buildOcItemsFromCart(safeCart, produtos, getLocalizacoesPorProduto);
@@ -201,13 +211,13 @@ function GerarOC() {
     } catch (error) {
       showToast(getGenerateOcErrorMessage(error), "error");
     } finally {
+      generatingRef.current = false;
       setGenerating(false);
     }
   }, [
     canCreateOc,
     cart,
     createOcWithProducts,
-    generating,
     getLocalizacoesPorProduto,
     navigate,
     produtos,

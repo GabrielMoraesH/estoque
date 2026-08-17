@@ -38,6 +38,31 @@ function normalizeText(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+export function getProdutoIdentity(produto) {
+  const produtoExternoId = optionalText(produto?.produto_externo_id);
+  if (produtoExternoId !== undefined) {
+    return `produto_externo_id:${produtoExternoId}`;
+  }
+
+  const codigo = optionalText(produto?.codigo);
+  if (codigo !== undefined) {
+    return `codigo:${codigo}`;
+  }
+
+  const fallback = normalizeText(resolveProdutoNome(produto || {}));
+  return fallback ? `produto_fallback:${fallback}` : undefined;
+}
+
+export function getLocalizacaoIdentity(produto) {
+  const localizacaoExternaId = optionalText(produto?.localizacao_externa_id);
+  if (localizacaoExternaId !== undefined) {
+    return `localizacao_externa_id:${localizacaoExternaId}`;
+  }
+
+  const endereco = optionalText(resolveEndereco(produto || {}));
+  return endereco !== undefined ? `endereco:${endereco}` : undefined;
+}
+
 function resolveProdutoNome(rawProduto) {
   return firstValue(rawProduto.produto, rawProduto.nome, rawProduto.nome_produto, "");
 }
@@ -112,8 +137,11 @@ export function buildOcItemPayloadFromProduto(produto) {
   };
 }
 
-export function isSameProdutoName(produto, nomeProduto) {
-  return normalizeText(produto?.produto) === normalizeText(nomeProduto);
+export function isSameProduto(produto, referenceProduto) {
+  const produtoIdentity = getProdutoIdentity(produto);
+  const referenceIdentity = getProdutoIdentity(referenceProduto);
+
+  return Boolean(produtoIdentity && referenceIdentity && produtoIdentity === referenceIdentity);
 }
 
 export function findProdutoLocationForOcItem(item, productLocations, fallbackIndex = 0) {

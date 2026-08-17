@@ -7,6 +7,7 @@ import {
   formatProductName
 } from "../../utils/formatters";
 import { getRenderableList } from "../../utils/ocData";
+import { getProdutoIdentity } from "../../contracts/produtosContract";
 
 const ProductListItem = memo(function ProductListItem({
   produto,
@@ -89,7 +90,7 @@ function ProductSelectionPanel({
           id="buscar-produto-gerar-oc"
           className="field-control"
           type="text"
-          placeholder="Digite o nome do produto"
+          placeholder={"Digite nome, c\u00f3digo ou c\u00f3digo de barras"}
           value={searchTerm}
           onChange={handleSearchChange}
         />
@@ -109,9 +110,9 @@ function ProductSelectionPanel({
         <div className="gerar-oc-product-list">
           {safeProdutos.map((produto) => (
             <ProductListItem
-              key={produto.id || produto.produto}
+              key={getProdutoIdentity(produto) || produto.id || produto.produto}
               produto={produto}
-              isInCart={safeCartItemIds.has(produto.id)}
+              isInCart={safeCartItemIds.has(getProdutoIdentity(produto))}
               canAddToCart={canAddToCart}
               addDisabled={addDisabled}
               onAddToCart={onAddToCart}

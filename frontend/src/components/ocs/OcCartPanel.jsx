@@ -7,13 +7,15 @@ import {
   formatProductName
 } from "../../utils/formatters";
 import { getRenderableList } from "../../utils/ocData";
+import { getProdutoIdentity } from "../../contracts/produtosContract";
 
 const CartItem = memo(function CartItem({ item, removingDisabled, onRemoveFromCart }) {
   const safeItem = item || {};
+  const itemIdentity = getProdutoIdentity(safeItem);
 
   const handleRemove = useCallback(() => {
-    onRemoveFromCart(safeItem.id);
-  }, [safeItem.id, onRemoveFromCart]);
+    onRemoveFromCart(itemIdentity);
+  }, [itemIdentity, onRemoveFromCart]);
 
   return (
     <div className="gerar-oc-cart-item">
@@ -98,7 +100,7 @@ function OcCartPanel({
         ) : (
           safeCart.map((item) => (
             <CartItem
-              key={item.id || item.produto}
+              key={getProdutoIdentity(item) || item.id || item.produto}
               item={item}
               removingDisabled={generating}
               onRemoveFromCart={onRemoveFromCart}

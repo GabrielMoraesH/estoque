@@ -1,7 +1,7 @@
 import { ApiError, requestJson } from "./api";
 import { produtosMock } from "./mockProdutos";
 import {
-  isSameProdutoName,
+  isSameProduto,
   normalizeProdutosResponse
 } from "../contracts/produtosContract";
 
@@ -88,10 +88,10 @@ export async function getProdutosExterno(options = {}) {
   return getProdutos(options);
 }
 
-export function getLocalizacoesPorProduto(produtos, nomeProduto) {
-  if (!Array.isArray(produtos) || !nomeProduto) {
+export function getLocalizacoesPorProduto(produtos, referenceProduto) {
+  if (!Array.isArray(produtos) || !referenceProduto) {
     return [];
   }
 
-  return produtos.filter((produto) => isSameProdutoName(produto, nomeProduto));
+  return produtos.filter((produto) => isSameProduto(produto, referenceProduto));
 }

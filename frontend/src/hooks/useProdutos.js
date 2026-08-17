@@ -16,7 +16,7 @@ export function useProdutos() {
     [empresaCodigo, empresaId]
   );
   const getLocalizacoesPorProduto = useCallback(
-    (produtos, nomeProduto) => selectLocalizacoesPorProduto(produtos, nomeProduto),
+    (produtos, referenceProduto) => selectLocalizacoesPorProduto(produtos, referenceProduto),
     []
   );
 

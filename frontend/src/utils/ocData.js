@@ -1,6 +1,8 @@
 import {
   buildOcItemPayloadFromProduto,
-  findProdutoLocationForOcItem
+  findProdutoLocationForOcItem,
+  getLocalizacaoIdentity,
+  getProdutoIdentity
 } from "../contracts/produtosContract";
 import {
   formatLocationBalanceSummary,
@@ -165,32 +167,40 @@ export function isOcReadyForApproval(oc) {
 }
 
 export function getSelectedItemIdSet(items) {
-  return new Set(getRenderableList(items).map((item) => item.id));
+  return new Set(getRenderableList(items).map((item) => getProdutoIdentity(item)).filter(Boolean));
 }
 
 export function groupProdutosByName(produtos) {
-  return asArray(produtos).reduce((acc, produto) => {
+  const grouped = new Map();
+
+  asArray(produtos).forEach((produto) => {
     if (!produto) {
-      return acc;
+      return;
     }
 
-    const nomeProduto = formatProductName(produto);
-    const existing = acc.find((item) => item.produto === nomeProduto);
+    const identity = getProdutoIdentity(produto);
+    if (!identity) {
+      return;
+    }
+
+    const existing = grouped.get(identity);
 
     if (existing) {
       existing.saldo_sistema += toNumber(produto.saldo_sistema);
-      return acc;
+      return;
     }
 
-    acc.push({
-      id: nomeProduto,
-      produto: nomeProduto,
+    grouped.set(identity, {
+      ...produto,
+      id: identity,
+      produto: formatProductName(produto),
       saldo_sistema: toNumber(produto.saldo_sistema),
       ultima_contagem: produto.ultima_contagem
     });
 
-    return acc;
-  }, []);
+  });
+
+  return Array.from(grouped.values());
 }
 
 export function filterProdutosByName(produtos, searchTerm) {
@@ -200,17 +210,33 @@ export function filterProdutosByName(produtos, searchTerm) {
     return asArray(produtos);
   }
 
-  return asArray(produtos).filter((produto) =>
-    String(produto?.produto || "").toLowerCase().includes(normalizedTerm)
-  );
+  return asArray(produtos).filter((produto) => [
+    produto?.produto,
+    produto?.codigo,
+    produto?.codigo_barras
+  ].some((value) => String(value || "").toLowerCase().includes(normalizedTerm)));
 }
 
 export function buildOcItemsFromCart(cart, produtos, getLocalizacoesPorProduto) {
-  return asArray(cart).flatMap((item) =>
-    item
-      ? getLocalizacoesPorProduto(produtos, item.produto).map(buildOcItemPayloadFromProduto)
-      : []
-  );
+  return asArray(cart).flatMap((item) => {
+    if (!item) {
+      return [];
+    }
+
+    const locationKeys = new Set();
+
+    return getLocalizacoesPorProduto(produtos, item).flatMap((produto) => {
+      const locationKey = getLocalizacaoIdentity(produto);
+      if (locationKey && locationKeys.has(locationKey)) {
+        return [];
+      }
+
+      if (locationKey) {
+        locationKeys.add(locationKey);
+      }
+      return [buildOcItemPayloadFromProduto(produto)];
+    });
+  });
 }
 
 export function getActionableOcItems(items) {
