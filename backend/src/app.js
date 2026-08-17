@@ -8,6 +8,7 @@ const userRoutes = require('./modules/users/user.routes');
 const ocRoutes = require('./modules/ocs/oc.routes');
 const healthRoutes = require('./modules/health/health.routes');
 const empresaRoutes = require('./modules/empresas/empresa.routes');
+const auditRoutes = require('./modules/audit/audit.routes');
 const errorHandler = require('./middlewares/errorHandler');
 const requestLogger = require('./middlewares/requestLogger');
 const { apiLimiter, loginLimiter } = require('./middlewares/rateLimiter');
@@ -45,6 +46,7 @@ app.use(authRoutes);
 app.use('/users', userRoutes);
 app.use('/ocs', ocRoutes);
 app.use('/empresas', empresaRoutes);
+app.use('/audit', auditRoutes);
 
 app.get('/', (req, res) => {
   res.send('API rodando normalmente');

@@ -77,7 +77,7 @@ describe('OcService unitario com repository mockado', () => {
   const admin = { id: 1, role: 'admin' };
   const estoquista = { id: 22, role: 'estoquista' };
 
-  it('cria OC nova sem oc_items dentro de transacao e registra auditoria', async () => {
+  it.each([['gestor', gestor], ['admin', admin]])('cria OC nova como %s e registra o ator correto', async (_role, actor) => {
     const repository = createRepositoryMock({
       findUserById: jest.fn().mockResolvedValue({
         id: 22,
@@ -89,7 +89,7 @@ describe('OcService unitario com repository mockado', () => {
       createOc: jest.fn().mockResolvedValue({
         id: 100,
         codigo: 'OC-000100',
-        gestor_id: 11,
+        gestor_id: actor.id,
         estoquista_id: 22,
         empresa_id: 1,
         status: OC_STATUS.OPEN
@@ -103,7 +103,7 @@ describe('OcService unitario com repository mockado', () => {
     const { service, audit } = createService({ repository });
 
     await expect(service.createOcWithItems({
-      user: gestor,
+      user: actor,
       empresaId: 1,
       payload: {
         estoquista_id: 22,
@@ -123,7 +123,7 @@ describe('OcService unitario com repository mockado', () => {
     expect(repository.createOc).toHaveBeenCalledWith({
       id: 100,
       codigo: 'OC-000100',
-      gestorId: 11,
+      gestorId: actor.id,
       estoquistaId: 22,
       empresaId: 1,
       status: OC_STATUS.OPEN
@@ -144,6 +144,7 @@ describe('OcService unitario com repository mockado', () => {
     });
     expect(repository.createItem).not.toHaveBeenCalled();
     expect(audit.logAction).toHaveBeenCalledWith(expect.objectContaining({
+      user: actor,
       action: 'oc.created',
       entityType: 'oc',
       entityId: 100,
@@ -153,7 +154,7 @@ describe('OcService unitario com repository mockado', () => {
 
   it('retorna erro de validacao ao criar OC sem itens', async () => {
     const repository = createRepositoryMock();
-    const { service } = createService({ repository });
+    const { service, audit } = createService({ repository });
 
     await expect(service.createOcWithItems({
       user: gestor,
@@ -174,7 +175,7 @@ describe('OcService unitario com repository mockado', () => {
     const repository = createRepositoryMock({
       findUserById: jest.fn().mockResolvedValue({ id: 22, role: 'gestor' })
     });
-    const { service } = createService({ repository });
+    const { service, audit } = createService({ repository });
 
     await expect(service.createOcWithItems({
       user: gestor,
@@ -536,11 +537,7 @@ describe('OcService unitario com repository mockado', () => {
       lote: 'L1',
       countedStatus: ITEM_STATUS.COUNTED
     });
-    expect(audit.logAction).toHaveBeenCalledWith(expect.objectContaining({
-      action: 'oc.item_counted',
-      entityType: 'oc_item',
-      entityId: 9
-    }));
+    expect(audit.logAction).not.toHaveBeenCalled();
   });
 
   it('bloqueia contagem quando estoquista nao e dono da OC', async () => {
@@ -667,8 +664,10 @@ describe('OcService unitario com repository mockado', () => {
       status: OC_STATUS.WAITING_APPROVAL
     });
     expect(audit.logAction).toHaveBeenCalledWith(expect.objectContaining({
+      user: estoquista,
       action: 'oc.finalized',
-      entityId: 55
+      entityId: 55,
+      metadata: expect.objectContaining({ empresa_id: 1 })
     }));
   });
 
@@ -701,11 +700,11 @@ describe('OcService unitario com repository mockado', () => {
     expect(repository.updateOcStatus).not.toHaveBeenCalled();
   });
 
-  it('aprova OC aguardando aprovacao para gestor dono', async () => {
+  it('aprova OC com gestor diferente do criador sem confundir o ator', async () => {
     const repository = createRepositoryMock({
       findOcById: jest.fn().mockResolvedValue({
         id: 55,
-        gestor_id: 11,
+        gestor_id: 12,
         estoquista_id: 22,
         empresa_id: 1,
         status: OC_STATUS.WAITING_APPROVAL
@@ -735,7 +734,10 @@ describe('OcService unitario com repository mockado', () => {
       status: OC_STATUS.FINALIZED
     });
     expect(audit.logAction).toHaveBeenCalledWith(expect.objectContaining({
-      action: 'oc.approved'
+      user: gestor,
+      action: 'oc.approved',
+      entityId: 55,
+      metadata: expect.objectContaining({ empresa_id: 1 })
     }));
   });
 
@@ -1668,7 +1670,7 @@ describe('OcService unitario com repository mockado', () => {
       approveItemsExcept: jest.fn().mockResolvedValue({}),
       updateOcAssignmentAndStatus: jest.fn().mockResolvedValue({})
     });
-    const { service } = createService({ repository });
+    const { service, audit } = createService({ repository });
 
     await expect(service.sendOcToRecount({
       user: admin,
@@ -1695,6 +1697,16 @@ describe('OcService unitario com repository mockado', () => {
       status: OC_STATUS.OPEN,
       estoquistaId: 33
     });
+    expect(audit.logAction).toHaveBeenCalledWith(expect.objectContaining({
+      user: admin,
+      action: 'oc.sent_to_recount',
+      entityId: 55,
+      metadata: expect.objectContaining({
+        empresa_id: 1,
+        new_estoquista_id: 33,
+        item_ids: [9, 10]
+      })
+    }));
   });
 
   it('retorna not found quando item de recontagem nao existe', async () => {
@@ -2149,7 +2161,7 @@ describe('OcService unitario com repository mockado', () => {
         { id: 66, nome: 'Outra empresa', role: 'estoquista', nivel_estoquista: 2, ativo: true, empresas: [{ id: 2 }] }
       ]
     });
-    const { service } = createService({ repository });
+    const { service, audit } = createService({ repository });
     const oc = await service.createOcWithItems({
       user: gestor,
       empresaId: 1,
@@ -2176,11 +2188,11 @@ describe('OcService unitario com repository mockado', () => {
     }
 
     await service.finalizeOc({ user: estoquista, empresaId: 1, ocId: oc.id });
-    return { repository, service, oc };
+    return { repository, service, audit, oc };
   }
 
   it('executa recontagem parcial A/B/C/D para B/D sem vazar produtos ou saldos ao recontador', async () => {
-    const { repository, service, oc } = await createNewModelOcForRecount();
+    const { repository, service, audit, oc } = await createNewModelOcForRecount();
     const stateAfterFirstCount = repository.__getState();
     const selectedProductIds = stateAfterFirstCount.ocProdutos
       .filter((produto) => ['Produto B', 'Produto D'].includes(produto.descricao_snapshot))
@@ -2201,6 +2213,18 @@ describe('OcService unitario com repository mockado', () => {
       .map((item) => item.oc_produto_id);
     expect(recountAssignment).toMatchObject({ ciclo: 2, estoquista_id: 33, status: 'ativo' });
     expect(assignmentProducts.sort()).toEqual([...selectedProductIds].sort());
+    expect(audit.logAction).toHaveBeenCalledWith(expect.objectContaining({
+      user: admin,
+      action: 'oc.sent_to_recount',
+      entityId: oc.id,
+      metadata: expect.objectContaining({
+        empresa_id: 1,
+        new_estoquista_id: 33,
+        item_ids: selectedProductIds,
+        cycle: 2,
+        assignment_id: recountAssignment.id
+      })
+    }));
 
     const myOcs = await service.listMyEstoquistaOcs({ user: { id: 33, role: 'estoquista' }, empresaId: 1 });
     expect(myOcs).toEqual([expect.objectContaining({ id: oc.id, qtd: 5, qtd_contados: 0 })]);

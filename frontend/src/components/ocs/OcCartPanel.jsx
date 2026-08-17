@@ -84,7 +84,7 @@ function OcCartPanel({
         </select>
         {safeEstoquistas.length === 0 && !loadingEstoquistas && (
           <p className="gerar-oc-field-message">
-            Nenhum estoquista de nÃ­vel 1 disponÃ­vel para esta filial.
+            Nenhum estoquista de ní­vel 1 disponí­vel para esta filial.
           </p>
         )}
       </div>

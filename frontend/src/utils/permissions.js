@@ -30,6 +30,10 @@ export function canManageUsers(user) {
   return isAdmin(user);
 }
 
+export function canViewAudit(user) {
+  return isAdmin(user);
+}
+
 export function canCreateOc(user) {
   return hasAnyRole(user, [ROLES.ADMIN, ROLES.GESTOR]);
 }

@@ -273,6 +273,36 @@ describe('Protecao de rotas autenticadas', () => {
     });
   });
 
+  describe('GET /audit', () => {
+    it('exige autenticacao', async () => {
+      const response = await request(app).get('/audit');
+      expect(response.status).toBe(401);
+      expect(db.query).not.toHaveBeenCalled();
+    });
+
+    it.each([[2, 'gestor'], [3, 'estoquista']])('bloqueia o perfil %s', async (id, role) => {
+      jwt.verify.mockReturnValue({ id, role });
+      const response = await request(app).get('/audit').set('Authorization', bearerToken(`token-${role}`));
+      expect(response.status).toBe(403);
+      expect(db.query).not.toHaveBeenCalled();
+    });
+
+    it('permite admin e retorna listagem global paginada', async () => {
+      jwt.verify.mockReturnValue({ id: 1, role: 'admin' });
+      db.query.mockResolvedValueOnce({ rows: [{ total: 1 }] }).mockResolvedValueOnce({ rows: [{ id: 10, action: 'oc.created' }] });
+      const response = await request(app).get('/audit?page=1&limit=25').set('Authorization', bearerToken('token-admin'));
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ items: [{ id: 10, action: 'oc.created' }], total: 1, page: 1, limit: 25, pages: 1 });
+    });
+
+    it.each(['/audit?page=0', '/audit?limit=0', '/audit?limit=101', '/audit?page=abc'])('rejeita paginacao invalida em %s', async (path) => {
+      jwt.verify.mockReturnValue({ id: 1, role: 'admin' });
+      const response = await request(app).get(path).set('Authorization', bearerToken('token-admin'));
+      expect(response.status).toBe(400);
+      expect(db.query).not.toHaveBeenCalled();
+    });
+  });
+
   describe('RBAC da Gestao de Usuarios', () => {
     const protectedOperations = [
       ['listar', 'get', '/users'],

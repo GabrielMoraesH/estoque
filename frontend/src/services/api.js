@@ -277,6 +277,14 @@ export async function getEmpresas() {
   });
 }
 
+export async function getAuditLogs(filters = {}) {
+  const params = new URLSearchParams();
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== "" && value !== null && value !== undefined) params.set(key, String(value));
+  });
+  return requestJson(`/audit?${params.toString()}`, { authenticated: true });
+}
+
 export async function updateUser(id, data) {
   return requestJson(`/users/${id}`, {
     method: "PUT",

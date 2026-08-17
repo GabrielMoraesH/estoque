@@ -10,6 +10,7 @@ import OcDetails from "./pages/OcDetails";
 import ContarItem from "./pages/ContarItem";
 import GerarOC from "./pages/GerarOC";
 import Aprovacao from "./pages/Aprovacao";
+import Audit from "./pages/Audit";
 import ToastProvider from "./components/ToastProvider";
 import { AuthProvider } from "./contexts/AuthContext";
 import {
@@ -17,6 +18,7 @@ import {
   canCountOc,
   canCreateOc,
   canManageUsers,
+  canViewAudit,
   canViewCountingItem,
   canViewGestorOcs,
   canViewOwnOcs
@@ -29,6 +31,11 @@ function App() {
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<Login />} />
+
+            <Route
+              path="/auditoria"
+              element={<PrivateRoute canAccess={canViewAudit}><Audit /></PrivateRoute>}
+            />
 
             <Route
               path="/dashboard"

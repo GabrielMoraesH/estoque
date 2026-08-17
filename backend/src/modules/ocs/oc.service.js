@@ -877,6 +877,7 @@ function createOcService({ repository, audit = noopAudit } = {}) {
 
     const normalizedItemIds = [...new Set(itemIds.map((itemId) => Number(itemId)))];
     const normalizedNovoEstoquistaId = Number(novoEstoquistaId);
+    let recountContext = {};
     const oc = await repository.withTransaction(async (tx) => {
       const foundOc = await getOcOrFail(ocId, tx, { forUpdate: true });
       assertOcEmpresa(foundOc, empresaId);
@@ -941,6 +942,8 @@ function createOcService({ repository, audit = noopAudit } = {}) {
 
         await tx.updateOcStatus({ ocId, status: OC_STATUS.OPEN });
 
+        recountContext = { cycle: nextCycle, assignment_id: assignment.id };
+
         return foundOc;
       }
 
@@ -997,7 +1000,8 @@ function createOcService({ repository, audit = noopAudit } = {}) {
         previous_estoquista_id: oc.estoquista_id,
         new_estoquista_id: normalizedNovoEstoquistaId,
         item_ids: normalizedItemIds,
-        item_count: normalizedItemIds.length
+        item_count: normalizedItemIds.length,
+        ...recountContext
       },
       auditContext
     });
@@ -1172,23 +1176,6 @@ function createOcService({ repository, audit = noopAudit } = {}) {
       return { item: currentItem, count: createdCount };
     });
 
-    await audit.logAction({
-      user,
-      action: 'oc.item_counted',
-      entityType: 'oc_item',
-      entityId: item_id,
-      metadata: {
-        oc_id,
-        empresa_id: empresaId,
-        contagem_id: count.id,
-        quantidade,
-        lote: cleanText(lote),
-        previous_status: item.status,
-        new_status: ITEM_STATUS.COUNTED
-      },
-      auditContext
-    });
-
     return count;
   }
 
@@ -1288,26 +1275,6 @@ function createOcService({ repository, audit = noopAudit } = {}) {
         assignment: activeAssignment,
         count: createdCount
       };
-    });
-
-    await audit.logAction({
-      user,
-      action: 'oc.location_counted',
-      entityType: 'oc_localizacao',
-      entityId: context.id,
-      metadata: {
-        oc_id: context.oc_id,
-        empresa_id: empresaId,
-        assignment_id: assignment.id,
-        oc_produto_id: context.oc_produto_id,
-        oc_localizacao_id: context.id,
-        contagem_id: count.id,
-        quantidade,
-        lote,
-        previous_status: context.status,
-        new_status: ITEM_STATUS.COUNTED
-      },
-      auditContext
     });
 
     return count;

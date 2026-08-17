@@ -88,6 +88,7 @@ describe('UserService unitario com repository mockado', () => {
     expect(repository.findActiveEmpresaIds).toHaveBeenCalledWith([1]);
     expect(repository.replaceUserEmpresas).toHaveBeenCalledWith(10, [1]);
     expect(audit.logAction).toHaveBeenCalledWith(expect.objectContaining({
+      user: { id: 1, role: 'admin' },
       action: 'user.created',
       entityType: 'user',
       entityId: 10,
@@ -310,7 +311,9 @@ describe('UserService unitario com repository mockado', () => {
     });
     expect(repository.replaceUserEmpresas).not.toHaveBeenCalled();
     expect(audit.logAction).toHaveBeenCalledWith(expect.objectContaining({
+      user: { id: 1, role: 'admin' },
       action: 'user.updated',
+      entityId: 7,
       metadata: expect.objectContaining({ password_changed: false })
     }));
   });
