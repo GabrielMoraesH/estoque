@@ -376,7 +376,7 @@ function createOcRepository(db = pool) {
                   WHEN COUNT(DISTINCT oc_produtos.id) > 0 THEN COUNT(DISTINCT oc_produtos.id)
                   ELSE COUNT(DISTINCT oc_items.id)
                 END::int AS qtd,
-                COALESCE(latest_assignment_user.nome, estoquista.nome) AS responsavel_nome,
+                COALESCE(responsible_assignment_user.nome, estoquista.nome) AS responsavel_nome,
                 criador.nome AS criador_nome,
                 latest_assignment.id AS active_assignment_id,
                 latest_assignment.fase AS active_assignment_fase,
@@ -412,7 +412,17 @@ function createOcRepository(db = pool) {
            ORDER BY assignments.ciclo DESC, assignments.id DESC
            LIMIT 1
          ) latest_assignment ON true
-         LEFT JOIN users latest_assignment_user ON latest_assignment_user.id = latest_assignment.estoquista_id
+         LEFT JOIN LATERAL (
+           SELECT assignments.estoquista_id
+           FROM oc_assignments assignments
+           WHERE assignments.oc_id = ocs.id
+           ORDER BY
+             CASE WHEN assignments.status = 'ativo' THEN 0 ELSE 1 END,
+             assignments.ciclo DESC,
+             assignments.id DESC
+           LIMIT 1
+         ) responsible_assignment ON true
+         LEFT JOIN users responsible_assignment_user ON responsible_assignment_user.id = responsible_assignment.estoquista_id
          LEFT JOIN users criador ON criador.id = ocs.gestor_id
          LEFT JOIN users estoquista ON estoquista.id = ocs.estoquista_id
          LEFT JOIN empresas ON empresas.id = ocs.empresa_id
@@ -421,12 +431,12 @@ function createOcRepository(db = pool) {
                   latest_assignment.id,
                   latest_assignment.fase,
                   latest_assignment.status,
-                  latest_assignment_user.nome,
+                  responsible_assignment_user.nome,
                   criador.nome,
                   estoquista.nome,
                   empresas.codigo,
                   empresas.nome
-         ORDER BY ocs.id DESC`,
+         ORDER BY ultima_movimentacao_em DESC NULLS LAST, ocs.id DESC`,
         [empresaId]
       );
 

@@ -2457,7 +2457,8 @@ describe('OcService unitario com repository mockado', () => {
       em_contagem: 1,
       aguardando_aprovacao: 1,
       em_recontagem: 1,
-      finalizadas: 1
+      finalizadas: 1,
+      atencao_necessaria: 1
     });
     expect(result.atencao_necessaria).toHaveLength(1);
     expect(result.atencao_necessaria[0]).toMatchObject({
@@ -2494,6 +2495,107 @@ describe('OcService unitario com repository mockado', () => {
     expect(result.indicadores.aguardando_aprovacao).toBe(2);
     expect(result.aguardando_aprovacao_filial).toBe(2);
     expect(result.atencao_necessaria.map((item) => item.id)).toEqual([11, 10]);
+  });
+
+  it('dashboard aplica precedencia operacional sem dupla contagem e preserva legado', async () => {
+    const repository = createInMemoryOcRepository({
+      users: [{ id: 11, nome: 'Gestor', role: 'gestor' }],
+      ocs: [
+        { id: 30, empresa_id: 1, status: OC_STATUS.WAITING_APPROVAL },
+        { id: 31, empresa_id: 1, status: OC_STATUS.FINALIZED },
+        { id: 32, empresa_id: 1, status: 'recontagem' },
+        { id: 33, empresa_id: 1, status: OC_STATUS.OPEN }
+      ],
+      items: [
+        { id: 330, oc_id: 33, status: ITEM_STATUS.RECOUNT }
+      ],
+      ocAssignments: [
+        { id: 300, oc_id: 30, ciclo: 3, fase: 'recontagem', status: 'ativo' },
+        { id: 310, oc_id: 31, ciclo: 2, fase: 'recontagem', status: 'ativo' }
+      ]
+    });
+    const { service } = createService({ repository });
+
+    const result = await service.getDashboardSummary({ user: gestor, empresaId: 1 });
+
+    expect(result.indicadores).toEqual({
+      total_ocs: 4,
+      em_contagem: 0,
+      aguardando_aprovacao: 0,
+      em_recontagem: 3,
+      finalizadas: 1,
+      atencao_necessaria: 0
+    });
+    expect(result.atencao_necessaria).toEqual([]);
+  });
+
+  it('dashboard ordena atencao pela ultima movimentacao e usa id no desempate', async () => {
+    const repository = createInMemoryOcRepository({
+      users: [{ id: 11, nome: 'Gestor', role: 'gestor' }],
+      ocs: [
+        { id: 40, empresa_id: 1, status: OC_STATUS.WAITING_APPROVAL, updated_at: '2026-02-01T00:00:00.000Z' },
+        { id: 41, empresa_id: 1, status: OC_STATUS.WAITING_APPROVAL, updated_at: '2026-02-01T00:00:00.000Z' },
+        { id: 99, empresa_id: 1, status: OC_STATUS.WAITING_APPROVAL, updated_at: '2026-01-01T00:00:00.000Z' }
+      ],
+      counts: [
+        { id: 1, oc_id: 40, created_at: '2026-03-01T00:00:00.000Z' }
+      ]
+    });
+    const { service } = createService({ repository });
+
+    const result = await service.getDashboardSummary({ user: gestor, empresaId: 1 });
+
+    expect(result.atencao_necessaria.map((item) => item.id)).toEqual([40, 41, 99]);
+    expect(result.atencao_necessaria[0].ultima_movimentacao_em)
+      .toBe('2026-03-01T00:00:00.000Z');
+  });
+
+  it('dashboard usa o mesmo universo no card e na lista de atencao', async () => {
+    const repository = createInMemoryOcRepository({
+      users: [{ id: 11, nome: 'Gestor', role: 'gestor' }],
+      ocs: Array.from({ length: 6 }, (_, index) => ({
+        id: 50 + index,
+        empresa_id: 1,
+        status: OC_STATUS.WAITING_APPROVAL
+      }))
+    });
+    const { service } = createService({ repository });
+
+    const result = await service.getDashboardSummary({ user: gestor, empresaId: 1 });
+
+    expect(result.indicadores.atencao_necessaria).toBe(6);
+    expect(result.atencao_necessaria).toHaveLength(6);
+  });
+
+  it('dashboard mantem o assignment mais recente como responsavel e usa sua finalizacao como movimento', async () => {
+    const repository = createInMemoryOcRepository({
+      users: [
+        { id: 11, nome: 'Gestor', role: 'gestor' },
+        { id: 22, nome: 'Primeiro contador', role: 'estoquista' },
+        { id: 33, nome: 'Ultimo recontador', role: 'estoquista' }
+      ],
+      ocs: [{
+        id: 60,
+        empresa_id: 1,
+        estoquista_id: 22,
+        status: OC_STATUS.WAITING_APPROVAL,
+        updated_at: '2026-04-01T00:00:00.000Z'
+      }],
+      ocAssignments: [
+        { id: 600, oc_id: 60, ciclo: 1, fase: 'contagem', estoquista_id: 22, status: 'finalizado', finalizado_em: '2026-04-02T00:00:00.000Z' },
+        { id: 601, oc_id: 60, ciclo: 3, fase: 'recontagem', estoquista_id: 33, status: 'finalizado', finalizado_em: '2026-04-06T00:00:00.000Z' }
+      ],
+      counts: [{ id: 1, oc_id: 60, assignment_id: 601, created_at: '2026-04-05T00:00:00.000Z' }]
+    });
+    const { service } = createService({ repository });
+
+    const result = await service.getDashboardSummary({ user: gestor, empresaId: 1 });
+
+    expect(result.atencao_necessaria[0]).toMatchObject({
+      id: 60,
+      responsavel_nome: 'Ultimo recontador',
+      ultima_movimentacao_em: '2026-04-06T00:00:00.000Z'
+    });
   });
 
   it('dashboard estoquista retorna somente tarefas proprias e sem campos sensiveis', async () => {

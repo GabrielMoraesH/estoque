@@ -635,9 +635,28 @@ function createOcService({ repository, audit = noopAudit } = {}) {
   }
 
   function isRecountDashboardRow(row) {
-    return row?.active_assignment_status === ASSIGNMENT_STATUS.ACTIVE
-      && row?.active_assignment_fase === 'recontagem'
-      || row?.has_legacy_recount === true;
+    return (row?.active_assignment_status === ASSIGNMENT_STATUS.ACTIVE
+      && row?.active_assignment_fase === 'recontagem')
+      || row?.has_legacy_recount === true
+      || ['recontar', 'recontagem'].includes(row?.status);
+  }
+
+  function getOperationalDashboardStatus(row) {
+    const persistedStatus = row?.status || OC_STATUS.OPEN;
+
+    if (persistedStatus === OC_STATUS.FINALIZED) {
+      return OC_STATUS.FINALIZED;
+    }
+
+    if (isRecountDashboardRow(row)) {
+      return 'recontagem';
+    }
+
+    if (persistedStatus === OC_STATUS.WAITING_APPROVAL) {
+      return OC_STATUS.WAITING_APPROVAL;
+    }
+
+    return OC_STATUS.OPEN;
   }
 
   function toInteger(value) {
@@ -652,7 +671,7 @@ function createOcService({ repository, audit = noopAudit } = {}) {
       empresa_id: row.empresa_id,
       empresa_codigo: row.empresa_codigo || null,
       empresa_nome: row.empresa_nome || null,
-      status: row.status || OC_STATUS.OPEN,
+      status: getOperationalDashboardStatus(row),
       quantidade_produtos: toInteger(row.qtd),
       responsavel_nome: row.responsavel_nome || null,
       ultima_movimentacao_em: row.ultima_movimentacao_em || null,
@@ -684,19 +703,15 @@ function createOcService({ repository, audit = noopAudit } = {}) {
   async function getDashboardSummary({ user, empresaId }) {
     if (isAdmin(user) || isGestor(user)) {
       const rows = await repository.listAdminDashboardRows({ empresaId });
-      const decisionRows = rows;
-      const waitingRows = rows.filter((row) => (row.status || OC_STATUS.OPEN) === OC_STATUS.WAITING_APPROVAL);
-      const decisionWaitingRows = decisionRows.filter(
-        (row) => (row.status || OC_STATUS.OPEN) === OC_STATUS.WAITING_APPROVAL
-      );
+      const classifiedRows = rows.map((row) => ({
+        row,
+        operationalStatus: getOperationalDashboardStatus(row)
+      }));
+      const decisionWaitingRows = classifiedRows
+        .filter(({ operationalStatus }) => operationalStatus === OC_STATUS.WAITING_APPROVAL)
+        .map(({ row }) => row);
       const attention = decisionWaitingRows
-        .map((row) => toAdminDashboardTask(
-          row,
-          row.active_assignment_fase === 'recontagem'
-            ? 'recontagem_concluida'
-            : 'aguardando_aprovacao'
-        ))
-        .slice(0, 5);
+        .map((row) => toAdminDashboardTask(row, 'aguardando_aprovacao'));
 
       return {
         perfil: user.role,
@@ -705,20 +720,25 @@ function createOcService({ repository, audit = noopAudit } = {}) {
           total: ['*'],
           em_contagem: [OC_STATUS.OPEN],
           aguardando_aprovacao: [OC_STATUS.WAITING_APPROVAL],
-          em_recontagem: ['oc_assignments.status=ativo AND oc_assignments.fase=recontagem', 'oc_items.status=recontar'],
+          em_recontagem: ['oc_assignments.status=ativo AND oc_assignments.fase=recontagem', 'oc_items.status=recontar', 'ocs.status IN (recontar, recontagem)'],
           finalizadas: [OC_STATUS.FINALIZED]
         },
         indicadores: {
           total_ocs: rows.length,
-          em_contagem: rows.filter(
-            (row) => (row.status || OC_STATUS.OPEN) === OC_STATUS.OPEN && !isRecountDashboardRow(row)
+          em_contagem: classifiedRows.filter(
+            ({ operationalStatus }) => operationalStatus === OC_STATUS.OPEN
           ).length,
           aguardando_aprovacao: decisionWaitingRows.length,
-          em_recontagem: rows.filter(isRecountDashboardRow).length,
-          finalizadas: rows.filter((row) => row.status === OC_STATUS.FINALIZED).length
+          em_recontagem: classifiedRows.filter(
+            ({ operationalStatus }) => operationalStatus === 'recontagem'
+          ).length,
+          finalizadas: classifiedRows.filter(
+            ({ operationalStatus }) => operationalStatus === OC_STATUS.FINALIZED
+          ).length,
+          atencao_necessaria: decisionWaitingRows.length
         },
         total_filial_ocs: rows.length,
-        aguardando_aprovacao_filial: waitingRows.length,
+        aguardando_aprovacao_filial: decisionWaitingRows.length,
         atencao_necessaria: attention
       };
     }

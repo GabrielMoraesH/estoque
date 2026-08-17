@@ -476,6 +476,9 @@ function createInMemoryOcRepository({
             const activeAssignment = currentState.ocAssignments
               .filter((assignment) => Number(assignment.oc_id) === Number(oc.id) && assignment.status === 'ativo')
               .sort((a, b) => Number(b.ciclo) - Number(a.ciclo) || Number(b.id) - Number(a.id))[0] || null;
+            const latestAssignment = currentState.ocAssignments
+              .filter((assignment) => Number(assignment.oc_id) === Number(oc.id))
+              .sort((a, b) => Number(b.ciclo) - Number(a.ciclo) || Number(b.id) - Number(a.id))[0] || null;
             const movementDates = [
               oc.created_at,
               oc.updated_at,
@@ -487,9 +490,11 @@ function createInMemoryOcRepository({
                 .flatMap((assignment) => [assignment.created_at, assignment.finalizado_em])
             ]
               .filter(Boolean)
-              .sort();
+              .sort((a, b) => new Date(a) - new Date(b));
             const responsavel = currentState.users.find(
-              (user) => Number(user.id) === Number(activeAssignment?.estoquista_id || oc.estoquista_id)
+              (user) => Number(user.id) === Number(
+                activeAssignment?.estoquista_id || latestAssignment?.estoquista_id || oc.estoquista_id
+              )
             );
             const criador = currentState.users.find((user) => Number(user.id) === Number(oc.gestor_id));
 
@@ -512,7 +517,11 @@ function createInMemoryOcRepository({
               ultima_movimentacao_em: movementDates.at(-1) || null
             };
           })
-          .sort((a, b) => Number(b.id) - Number(a.id));
+          .sort((a, b) => {
+            const dateDiff = new Date(b.ultima_movimentacao_em || 0)
+              - new Date(a.ultima_movimentacao_em || 0);
+            return dateDiff || Number(b.id) - Number(a.id);
+          });
       },
 
       async listEstoquistaDashboardRows({ estoquistaId, empresaId, itemStatus, ocStatus }) {
@@ -537,7 +546,7 @@ function createInMemoryOcRepository({
               .map((count) => count.created_at)
           ]
             .filter(Boolean)
-            .sort();
+              .sort((a, b) => new Date(a) - new Date(b));
 
           return {
             id: oc.id,

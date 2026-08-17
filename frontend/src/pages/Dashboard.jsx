@@ -6,7 +6,7 @@ import PageHeader from "../components/ui/PageHeader";
 import Panel from "../components/ui/Panel";
 import useEmpresa from "../hooks/useEmpresa";
 import usePermissions from "../hooks/usePermissions";
-import { getDashboardSummary, getErrorMessage } from "../services/api";
+import { getDashboardSummary } from "../services/api";
 import {
   formatCountProgress,
   formatOcCode,
@@ -202,7 +202,7 @@ function Dashboard() {
         }
       } catch (err) {
         if (!cancelled) {
-          setError(getErrorMessage(err, "Não foi possível carregar o Dashboard."));
+          setError("Não foi possível carregar o Dashboard. Tente novamente em instantes.");
         }
       } finally {
         if (!cancelled) {
@@ -269,7 +269,8 @@ function Dashboard() {
                       { label: "Em contagem", value: adminIndicators.em_contagem || 0 },
                       { label: "Aguardando aprovação", value: adminIndicators.aguardando_aprovacao || 0 },
                       { label: "Em recontagem", value: adminIndicators.em_recontagem || 0 },
-                      { label: "Finalizadas", value: adminIndicators.finalizadas || 0 }
+                      { label: "Finalizadas", value: adminIndicators.finalizadas || 0 },
+                      { label: "Atenção necessária", value: adminIndicators.atencao_necessaria || 0 }
                     ]}
                   />
 
