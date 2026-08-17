@@ -1,5 +1,6 @@
 const { createUserService } = require('../modules/users/user.service');
 const { createUserRepository } = require('../modules/users/user.repository');
+const { createInMemoryUserRepository } = require('../modules/users/in-memory-user.repository');
 const AppError = require('../utils/AppError');
 const ERROR_CODES = require('../utils/errorCodes');
 
@@ -745,6 +746,50 @@ describe('UserService unitario com repository mockado', () => {
       empresaId: 2,
       nivel: 1
     });
+  });
+
+  it('mantem role no contrato de estoquistas dos repositories PostgreSQL e in-memory', async () => {
+    const postgresDb = {
+      query: jest.fn().mockResolvedValue({
+        rows: [{
+          id: 3,
+          nome: 'Estoquista',
+          role: 'estoquista',
+          ativo: true,
+          nivel_estoquista: 1,
+          empresas: [{ id: 2 }]
+        }]
+      })
+    };
+    const postgresRepository = createUserRepository(postgresDb);
+    const postgresResult = await postgresRepository.listEstoquistas({ empresaId: 2, nivel: 1 });
+    const [query] = postgresDb.query.mock.calls[0];
+    const inMemoryRepository = createInMemoryUserRepository({
+      users: [{
+        id: 3,
+        nome: 'Estoquista',
+        role: 'estoquista',
+        ativo: true,
+        nivel_estoquista: 1,
+        empresas: [{ id: 2 }]
+      }]
+    });
+
+    expect(query).toMatch(/users\.role,\s+users\.ativo/);
+    expect(postgresResult[0]).toMatchObject({
+      role: 'estoquista',
+      ativo: true,
+      nivel_estoquista: 1,
+      empresas: [{ id: 2 }]
+    });
+    await expect(inMemoryRepository.listEstoquistas({ empresaId: 2, nivel: 1 }))
+      .resolves
+      .toEqual([expect.objectContaining({
+        role: 'estoquista',
+        ativo: true,
+        nivel_estoquista: 1,
+        empresas: [{ id: 2 }]
+      })]);
   });
 
   it('converte violacao de chave estrangeira ao excluir usuario', async () => {

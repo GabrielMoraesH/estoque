@@ -195,6 +195,7 @@ function createUserRepository(db = pool) {
         `SELECT
            users.id,
            users.nome,
+           users.role,
            users.ativo,
            users.nivel_estoquista,
            COALESCE(

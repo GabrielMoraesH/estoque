@@ -171,6 +171,7 @@ function createInMemoryUserRepository({ users = [] } = {}) {
         .map((user) => ({
           id: user.id,
           nome: user.nome,
+          role: user.role,
           ativo: user.ativo !== false,
           nivel_estoquista: user.nivel_estoquista ?? null,
           empresas: user.empresas.map((empresa) => ({ ...empresa }))
