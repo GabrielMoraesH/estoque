@@ -13,7 +13,7 @@ const passwordHasher = {
 
 const tokenProvider = {
   sign(payload) {
-    return `token:${payload.id}:${payload.role}`;
+    return `token:${payload.id}`;
   }
 };
 
@@ -55,7 +55,7 @@ describe('UserService com IUserRepository em memoria', () => {
     });
 
     expect(result).toEqual({
-      token: 'token:1:admin',
+      token: 'token:1',
       user: {
         id: 1,
         nome: 'Admin',

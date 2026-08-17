@@ -1,7 +1,6 @@
 import { isAdmin, isGestor } from "../utils/permissions";
 
 const API_URL = process.env.REACT_APP_API_URL;
-const TOKEN_STORAGE_KEY = "token";
 
 let authTokenProvider = () => null;
 let activeEmpresaIdProvider = () => null;
@@ -24,17 +23,7 @@ export function configureApiClient({ getToken, getActiveEmpresaId, onUnauthorize
 }
 
 function getToken() {
-  const providedToken = authTokenProvider();
-
-  if (providedToken) {
-    return providedToken;
-  }
-
-  try {
-    return localStorage.getItem(TOKEN_STORAGE_KEY);
-  } catch {
-    return null;
-  }
+  return authTokenProvider();
 }
 
 function createHeaders({ authenticated = false, json = false, headers = {} } = {}) {
@@ -134,15 +123,17 @@ export async function requestJson(
   } = {}
 ) {
   let response;
+  const requestHeaders = createHeaders({
+    authenticated,
+    json: body !== undefined,
+    headers
+  });
+  const requestToken = requestHeaders.Authorization?.replace(/^Bearer\s+/, '') || null;
 
   try {
     response = await fetch(`${API_URL}${path}`, {
       method,
-      headers: createHeaders({
-        authenticated,
-        json: body !== undefined,
-        headers
-      }),
+      headers: requestHeaders,
       body: body !== undefined ? JSON.stringify(body) : undefined
     });
   } catch {
@@ -163,7 +154,7 @@ export async function requestJson(
 
     if (authenticated && response.status === 401) {
       const handler = typeof onUnauthorized === "function" ? onUnauthorized : unauthorizedHandler;
-      handler?.(error);
+      handler?.(error, { token: requestToken });
     }
 
     throw error;
@@ -184,6 +175,12 @@ export async function loginUser(data) {
   return requestJson("/users/login", {
     method: "POST",
     body: data
+  });
+}
+
+export async function getCurrentUser() {
+  return requestJson("/auth/me", {
+    authenticated: true
   });
 }
 

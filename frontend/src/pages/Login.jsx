@@ -11,7 +11,7 @@ function Login() {
   const [submitting, setSubmitting] = useState(false);
   const navigate = useNavigate();
   const { showToast } = useToast();
-  const { isAuthenticated, login: loginWithPassword } = useAuth();
+  const { isAuthenticated, isInitializing, login: loginWithPassword } = useAuth();
   const isSubmitDisabled = submitting || !login.trim() || !senha;
 
   const handleSubmit = useCallback(async (e) => {
@@ -35,6 +35,10 @@ function Login() {
       setSubmitting(false);
     }
   }, [login, loginWithPassword, navigate, senha, showToast, submitting]);
+
+  if (isInitializing) {
+    return null;
+  }
 
   if (isAuthenticated) {
     return <Navigate to="/dashboard" replace />;

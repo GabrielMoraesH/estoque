@@ -4,6 +4,7 @@ const app = require('../app');
 const db = require('../config/db');
 const userService = require('../modules/users/userService');
 const ocService = require('../modules/ocs/ocService');
+const authRepository = require('../modules/auth/authRepository');
 const { bearerToken } = require('./helpers/auth');
 
 function mockActiveEmpresaAccess() {
@@ -33,6 +34,10 @@ jest.mock('../config/db', () => ({
 jest.mock('jsonwebtoken', () => ({
   ...jest.requireActual('jsonwebtoken'),
   verify: jest.fn()
+}));
+
+jest.mock('../modules/auth/authRepository', () => ({
+  findCurrentUserById: jest.fn()
 }));
 
 jest.mock('../modules/users/userService', () => ({
@@ -65,6 +70,15 @@ jest.mock('../modules/ocs/ocService', () => ({
 describe('Protecao de rotas autenticadas', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    authRepository.findCurrentUserById.mockImplementation(async (id) => {
+      const users = {
+        1: { id: 1, nome: 'Admin', role: 'admin', nivel_estoquista: null, ativo: true, empresas: [] },
+        2: { id: 2, nome: 'Gestor', role: 'gestor', nivel_estoquista: null, ativo: true, empresas: [] },
+        3: { id: 3, nome: 'Estoquista', role: 'estoquista', nivel_estoquista: 1, ativo: true, empresas: [] }
+      };
+
+      return users[id] || null;
+    });
   });
 
   describe('GET /users', () => {
@@ -100,7 +114,11 @@ describe('Protecao de rotas autenticadas', () => {
           status: 401
         })
       });
-      expect(jwt.verify).toHaveBeenCalledWith('token-invalido', expect.any(String));
+      expect(jwt.verify).toHaveBeenCalledWith(
+        'token-invalido',
+        expect.any(String),
+        { algorithms: ['HS256'] }
+      );
       expect(userService.listUsers).not.toHaveBeenCalled();
     });
 
@@ -156,6 +174,100 @@ describe('Protecao de rotas autenticadas', () => {
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual(users);
+      expect(userService.listUsers).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejeita token emitido antes da desativacao do usuario', async () => {
+      jwt.verify.mockReturnValue({ id: 1, role: 'admin' });
+      authRepository.findCurrentUserById.mockResolvedValue({
+        id: 1,
+        nome: 'Admin',
+        role: 'admin',
+        ativo: false,
+        empresas: []
+      });
+
+      const response = await request(app)
+        .get('/users')
+        .set('Authorization', bearerToken('token-admin-antigo'));
+
+      expect(response.status).toBe(401);
+      expect(userService.listUsers).not.toHaveBeenCalled();
+    });
+
+    it('rejeita token valido de usuario que nao existe mais', async () => {
+      jwt.verify.mockReturnValue({ id: 99, role: 'admin' });
+      authRepository.findCurrentUserById.mockResolvedValue(null);
+
+      const response = await request(app)
+        .get('/users')
+        .set('Authorization', bearerToken('token-usuario-removido'));
+
+      expect(response.status).toBe(401);
+      expect(userService.listUsers).not.toHaveBeenCalled();
+    });
+
+    it('nao mascara erro inesperado do repository como token invalido', async () => {
+      jwt.verify.mockReturnValue({ id: 1 });
+      authRepository.findCurrentUserById.mockRejectedValue(new Error('database unavailable'));
+
+      const response = await request(app)
+        .get('/users')
+        .set('Authorization', bearerToken('token-valido'));
+
+      expect(response.status).toBe(500);
+      expect(response.body.error.message).toBe('Erro interno do servidor');
+      expect(response.body.error.message).not.toContain('database unavailable');
+      expect(userService.listUsers).not.toHaveBeenCalled();
+    });
+
+    it('rejeita token sem identidade valida', async () => {
+      jwt.verify.mockReturnValue({ role: 'admin' });
+
+      const response = await request(app)
+        .get('/users')
+        .set('Authorization', bearerToken('token-sem-id'));
+
+      expect(response.status).toBe(401);
+      expect(authRepository.findCurrentUserById).not.toHaveBeenCalled();
+    });
+
+    it('usa a role atual do banco e ignora a role admin antiga do token', async () => {
+      jwt.verify.mockReturnValue({ id: 1, role: 'admin' });
+      authRepository.findCurrentUserById.mockResolvedValue({
+        id: 1,
+        nome: 'Ex-admin',
+        role: 'gestor',
+        nivel_estoquista: null,
+        ativo: true,
+        empresas: []
+      });
+
+      const response = await request(app)
+        .get('/users')
+        .set('Authorization', bearerToken('token-admin-antigo'));
+
+      expect(response.status).toBe(403);
+      expect(userService.listUsers).not.toHaveBeenCalled();
+    });
+
+    it('aplica imediatamente a promocao de gestor para admin segundo o banco', async () => {
+      jwt.verify.mockReturnValue({ id: 2, role: 'gestor' });
+      authRepository.findCurrentUserById.mockResolvedValue({
+        id: 2,
+        nome: 'Novo admin',
+        role: 'admin',
+        nivel_estoquista: null,
+        ativo: true,
+        empresas: []
+      });
+      userService.listUsers.mockResolvedValue([]);
+
+      const response = await request(app)
+        .get('/users')
+        .set('Authorization', bearerToken('token-gestor-antigo'));
+
+      expect(response.status).toBe(200);
       expect(userService.listUsers).toHaveBeenCalledTimes(1);
     });
   });
@@ -230,14 +342,95 @@ describe('Protecao de rotas autenticadas', () => {
       expect(ocService.listMyGestorOcs).toHaveBeenCalledWith({
         user: {
           id: 2,
-          role: 'gestor'
+          nome: 'Gestor',
+          role: 'gestor',
+          nivel_estoquista: null,
+          empresas: []
         },
         empresaId: 1
       });
     });
   });
 
+  describe('GET /auth/me', () => {
+    it('retorna somente os dados publicos atuais da sessao', async () => {
+      jwt.verify.mockReturnValue({ id: 3, role: 'admin' });
+      authRepository.findCurrentUserById.mockResolvedValue({
+        id: 3,
+        nome: 'Estoquista',
+        role: 'estoquista',
+        nivel_estoquista: 2,
+        ativo: true,
+        empresas: [
+          { id: 7, codigo: 'FILIAL_7', nome: 'Filial 7' },
+          { id: 12, codigo: 'FILIAL_12', nome: 'Filial 12' }
+        ]
+      });
+
+      const response = await request(app)
+        .get('/auth/me')
+        .set('Authorization', bearerToken('token-antigo'));
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        user: {
+          id: 3,
+          nome: 'Estoquista',
+          role: 'estoquista',
+          nivel_estoquista: 2,
+          empresas: [
+            { id: 7, codigo: 'FILIAL_7', nome: 'Filial 7' },
+            { id: 12, codigo: 'FILIAL_12', nome: 'Filial 12' }
+          ]
+        }
+      });
+      expect(response.body.user).not.toHaveProperty('senha');
+    });
+
+    it('permite usuario ativo sem empresas vinculadas', async () => {
+      jwt.verify.mockReturnValue({ id: 2 });
+      authRepository.findCurrentUserById.mockResolvedValue({
+        id: 2,
+        nome: 'Gestor sem empresa',
+        role: 'gestor',
+        nivel_estoquista: null,
+        ativo: true,
+        empresas: []
+      });
+
+      const response = await request(app)
+        .get('/auth/me')
+        .set('Authorization', bearerToken('token-sem-empresa'));
+
+      expect(response.status).toBe(200);
+      expect(response.body.user.empresas).toEqual([]);
+    });
+  });
+
   describe('POST /ocs/contar', () => {
+    it('bloqueia x-empresa-id antigo depois da remocao do vinculo', async () => {
+      jwt.verify.mockReturnValue({ id: 3, role: 'estoquista' });
+      db.query
+        .mockResolvedValueOnce({
+          rows: [{ id: 1, codigo: 'DIMEBRAS_PR', nome: 'Dimebras PR', ativo: true }]
+        })
+        .mockResolvedValueOnce({ rowCount: 0, rows: [] });
+
+      const response = await request(app)
+        .post('/ocs/contar')
+        .set('Authorization', bearerToken('token-estoquista'))
+        .set('x-empresa-id', '1')
+        .send({
+          oc_id: 10,
+          oc_localizacao_id: 20,
+          quantidade: 1,
+          lote: 'L1'
+        });
+
+      expect(response.status).toBe(403);
+      expect(ocService.saveOcCount).not.toHaveBeenCalled();
+    });
+
     it('rejeita quantidade vazia antes de chamar o service', async () => {
       jwt.verify.mockReturnValue({
         id: 3,

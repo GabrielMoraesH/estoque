@@ -5,6 +5,10 @@ function createAuthService() {
         message: 'Voce esta logado',
         user
       };
+    },
+
+    getCurrentUser(user) {
+      return user;
     }
   };
 }

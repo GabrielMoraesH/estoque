@@ -5,6 +5,7 @@ const ERROR_CODES = require('../../utils/errorCodes');
 const { assertUserRepository } = require('./IUserRepository');
 const {
   bcryptSaltRounds,
+  jwtAlgorithm,
   jwtSecret,
   jwtExpiresIn
 } = require('../../config/security');
@@ -97,7 +98,7 @@ function createUserService({
   audit = noopAudit,
   passwordHasher = bcrypt,
   tokenProvider = jwt,
-  security = { bcryptSaltRounds, jwtSecret, jwtExpiresIn }
+  security = { bcryptSaltRounds, jwtAlgorithm, jwtSecret, jwtExpiresIn }
 } = {}) {
   assertUserRepository(repository);
 
@@ -186,9 +187,9 @@ function createUserService({
     }
 
     const token = tokenProvider.sign(
-      { id: user.id, role: user.role },
+      { id: user.id },
       security.jwtSecret,
-      { expiresIn: security.jwtExpiresIn }
+      { expiresIn: security.jwtExpiresIn, algorithm: security.jwtAlgorithm }
     );
 
     return {

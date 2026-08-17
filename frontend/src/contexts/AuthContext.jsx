@@ -1,5 +1,5 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { configureApiClient, loginUser } from "../services/api";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { ApiError, configureApiClient, getCurrentUser, loginUser } from "../services/api";
 
 const AuthContext = createContext(null);
 const TOKEN_STORAGE_KEY = "token";
@@ -103,11 +103,17 @@ function readStoredSession() {
 
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(() => readStoredSession());
+  const [isInitializing, setIsInitializing] = useState(true);
+  const currentTokenRef = useRef(session.token);
+  const sessionVersionRef = useRef(0);
 
   const clearSession = useCallback(() => {
+    sessionVersionRef.current += 1;
+    currentTokenRef.current = null;
     localStorage.removeItem(TOKEN_STORAGE_KEY);
     localStorage.removeItem(USER_STORAGE_KEY);
     localStorage.removeItem(ACTIVE_EMPRESA_STORAGE_KEY);
+    configureApiClient();
     setSession({
       token: null,
       user: null,
@@ -123,6 +129,8 @@ export function AuthProvider({ children }) {
       hasProvidedActiveEmpresa ? nextSession.activeEmpresa : readStoredActiveEmpresa()
     );
 
+    sessionVersionRef.current += 1;
+    currentTokenRef.current = nextSession.token;
     localStorage.setItem(TOKEN_STORAGE_KEY, nextSession.token);
     localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
     persistActiveEmpresa(activeEmpresa);
@@ -130,6 +138,17 @@ export function AuthProvider({ children }) {
       token: nextSession.token,
       user,
       activeEmpresa
+    });
+  }, []);
+
+  const suspendSession = useCallback(() => {
+    sessionVersionRef.current += 1;
+    currentTokenRef.current = null;
+    configureApiClient();
+    setSession({
+      token: null,
+      user: null,
+      activeEmpresa: null
     });
   }, []);
 
@@ -170,13 +189,63 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     configureApiClient({
-      getToken: () => session.token,
+      getToken: () => currentTokenRef.current,
       getActiveEmpresaId: () => session.activeEmpresa?.id || null,
-      onUnauthorized: () => {
-        clearSession();
+      onUnauthorized: (_error, requestContext) => {
+        if (requestContext?.token === currentTokenRef.current) {
+          clearSession();
+        }
       }
     });
   }, [clearSession, session.activeEmpresa?.id, session.token]);
+
+  useEffect(() => {
+    let active = true;
+
+    async function restoreSession() {
+      if (!session.token) {
+        setIsInitializing(false);
+        return;
+      }
+
+      const restorationVersion = sessionVersionRef.current;
+
+      try {
+        const response = await getCurrentUser();
+
+        if (
+          active
+          && restorationVersion === sessionVersionRef.current
+          && response?.user
+        ) {
+          saveSession({
+            token: session.token,
+            user: response.user,
+            activeEmpresa: readStoredActiveEmpresa()
+          });
+        }
+      } catch (error) {
+        if (active && restorationVersion === sessionVersionRef.current) {
+          if (error instanceof ApiError && error.status === 401) {
+            clearSession();
+          } else {
+            suspendSession();
+          }
+        }
+      } finally {
+        if (active) {
+          setIsInitializing(false);
+        }
+      }
+    }
+
+    restoreSession();
+    return () => {
+      active = false;
+    };
+    // A restauracao deve ocorrer uma vez para o token encontrado na inicializacao.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const handleStorage = (event) => {
@@ -188,7 +257,10 @@ export function AuthProvider({ children }) {
         return;
       }
 
-      setSession(readStoredSession());
+      const storedSession = readStoredSession();
+      sessionVersionRef.current += 1;
+      currentTokenRef.current = storedSession.token;
+      setSession(storedSession);
     };
 
     window.addEventListener("storage", handleStorage);
@@ -201,11 +273,12 @@ export function AuthProvider({ children }) {
     activeEmpresa: session.activeEmpresa,
     token: session.token,
     isAuthenticated: Boolean(session.token),
+    isInitializing,
     setActiveEmpresa,
     login,
     logout,
     clearSession
-  }), [clearSession, login, logout, session.activeEmpresa, session.token, session.user, setActiveEmpresa]);
+  }), [clearSession, isInitializing, login, logout, session.activeEmpresa, session.token, session.user, setActiveEmpresa]);
 
   return (
     <AuthContext.Provider value={value}>

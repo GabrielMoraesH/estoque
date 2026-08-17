@@ -2,7 +2,11 @@ import { Navigate } from "react-router-dom";
 import useAuth from "../hooks/useAuth";
 
 function PrivateRoute({ children, canAccess, redirectTo = "/dashboard" }) {
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, isInitializing, user } = useAuth();
+
+  if (isInitializing) {
+    return null;
+  }
 
   if (!isAuthenticated) {
     return <Navigate to="/" replace />;

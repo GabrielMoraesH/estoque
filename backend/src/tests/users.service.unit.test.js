@@ -40,7 +40,8 @@ function createService({ repository = createRepositoryMock(), audit, passwordHas
     security: {
       bcryptSaltRounds: 4,
       jwtSecret: 'unit-test-secret',
-      jwtExpiresIn: '15m'
+      jwtExpiresIn: '15m',
+      jwtAlgorithm: 'HS256'
     }
   };
 
@@ -185,9 +186,9 @@ describe('UserService unitario com repository mockado', () => {
     expect(passwordHasher.compare).toHaveBeenCalledWith('secret', 'hashed:secret');
     expect(repository.listActiveEmpresasByUserId).toHaveBeenCalledWith(3);
     expect(tokenProvider.sign).toHaveBeenCalledWith(
-      { id: 3, role: 'estoquista' },
+      { id: 3 },
       'unit-test-secret',
-      { expiresIn: '15m' }
+      { expiresIn: '15m', algorithm: 'HS256' }
     );
   });
 

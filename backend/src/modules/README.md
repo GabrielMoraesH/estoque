@@ -71,7 +71,7 @@ const userService = createUserService({
     compare: async (value, storedValue) => value === storedValue
   },
   tokenProvider: {
-    sign: (payload) => `token:${payload.id}:${payload.role}`
+    sign: (payload) => `token:${payload.id}`
   },
   security: {
     bcryptSaltRounds: 1,

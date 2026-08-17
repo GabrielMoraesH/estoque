@@ -13,6 +13,7 @@ function parseSaltRounds(value) {
 module.exports = {
   jwtSecret: env.jwt.secret,
   jwtExpiresIn: env.jwt.expiresIn,
+  jwtAlgorithm: 'HS256',
   bcryptSaltRounds: parseSaltRounds(env.security.bcryptSaltRounds),
   requestBodyLimit: env.security.requestBodyLimit,
   helmetOptions: {
