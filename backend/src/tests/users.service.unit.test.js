@@ -1,4 +1,5 @@
 const { createUserService } = require('../modules/users/user.service');
+const { createUserRepository } = require('../modules/users/user.repository');
 const AppError = require('../utils/AppError');
 const ERROR_CODES = require('../utils/errorCodes');
 
@@ -336,6 +337,61 @@ describe('UserService unitario com repository mockado', () => {
     }));
   });
 
+  it.each(['gestor', 'estoquista'])('impede admin de alterar o proprio perfil para %s', async (role) => {
+    const currentUser = { id: 7, nome: 'Admin', login: 'admin', role: 'admin' };
+    const repository = createRepositoryMock({
+      findSummaryById: jest.fn().mockResolvedValue(currentUser)
+    });
+    const { service, passwordHasher } = createService({ repository });
+
+    await expect(service.updateUser({
+      id: 7,
+      nome: 'Admin',
+      login: 'admin',
+      role,
+      empresa_ids: [1],
+      actor: { id: 7, role: 'admin' }
+    })).rejects.toMatchObject({
+      message: 'Voce nao pode alterar o perfil do seu proprio usuario',
+      statusCode: 400,
+      errorCode: ERROR_CODES.VALIDATION_ERROR
+    });
+
+    expect(passwordHasher.hash).not.toHaveBeenCalled();
+    expect(repository.update).not.toHaveBeenCalled();
+    expect(repository.replaceUserEmpresas).not.toHaveBeenCalled();
+  });
+
+  it('permite admin editar os proprios dados mantendo o perfil admin', async () => {
+    const currentUser = { id: 7, nome: 'Admin', login: 'admin', role: 'admin', empresas: [{ id: 1 }] };
+    const updatedUser = { ...currentUser, nome: 'Administradora', login: 'admin.novo', empresas: [{ id: 2 }] };
+    const repository = createRepositoryMock({
+      findSummaryById: jest.fn()
+        .mockResolvedValueOnce(currentUser)
+        .mockResolvedValueOnce(updatedUser),
+      update: jest.fn().mockResolvedValue(updatedUser)
+    });
+    const { service, passwordHasher } = createService({ repository });
+
+    await expect(service.updateUser({
+      id: 7,
+      nome: 'Administradora',
+      login: 'admin.novo',
+      role: 'admin',
+      senha: 'nova-senha',
+      empresa_ids: [2],
+      actor: { id: 7, role: 'admin' }
+    })).resolves.toEqual(updatedUser);
+
+    expect(passwordHasher.hash).toHaveBeenCalledWith('nova-senha', 4);
+    expect(repository.update).toHaveBeenCalledWith(expect.objectContaining({
+      id: 7,
+      role: 'admin',
+      senha: 'hashed:nova-senha'
+    }));
+    expect(repository.replaceUserEmpresas).toHaveBeenCalledWith(7, [2]);
+  });
+
   it('rejeita edicao com nova senha menor que 6 caracteres', async () => {
     const currentUser = { id: 7, nome: 'Bia', login: 'bia', role: 'gestor' };
     const repository = createRepositoryMock({
@@ -382,6 +438,32 @@ describe('UserService unitario com repository mockado', () => {
     expect(repository.update).toHaveBeenCalledWith(expect.objectContaining({
       senha: 'hashed:abcdef'
     }));
+  });
+
+  it('converte login duplicado na edicao em erro de dominio sem alteracao parcial', async () => {
+    const duplicateError = new Error('duplicate key value violates unique constraint');
+    duplicateError.code = '23505';
+    const currentUser = { id: 7, nome: 'Bia', login: 'bia', role: 'gestor' };
+    const repository = createRepositoryMock({
+      findSummaryById: jest.fn().mockResolvedValue(currentUser),
+      update: jest.fn().mockRejectedValue(duplicateError)
+    });
+    const { service } = createService({ repository });
+
+    await expect(service.updateUser({
+      id: 7,
+      nome: 'Bia',
+      login: 'login.existente',
+      role: 'gestor',
+      empresa_ids: [1],
+      actor: { id: 1, role: 'admin' }
+    })).rejects.toMatchObject({
+      message: 'Login ja existe',
+      statusCode: 409,
+      errorCode: ERROR_CODES.CONFLICT
+    });
+
+    expect(repository.replaceUserEmpresas).not.toHaveBeenCalled();
   });
 
   it('retorna not found ao atualizar usuario inexistente', async () => {
@@ -684,6 +766,28 @@ describe('UserService unitario com repository mockado', () => {
 
   it('falha cedo quando repository nao implementa IUserRepository', () => {
     expect(() => createUserService({ repository: {} })).toThrow(TypeError);
+  });
+
+  it('executa rollback e nao commit quando uma etapa transacional falha', async () => {
+    const transactionError = new Error('falha ao substituir empresas');
+    const client = {
+      query: jest.fn().mockResolvedValue({ rows: [] }),
+      release: jest.fn()
+    };
+    const db = {
+      connect: jest.fn().mockResolvedValue(client),
+      query: jest.fn()
+    };
+    const repository = createUserRepository(db);
+
+    await expect(repository.withTransaction(async () => {
+      throw transactionError;
+    })).rejects.toBe(transactionError);
+
+    expect(client.query).toHaveBeenNthCalledWith(1, 'BEGIN');
+    expect(client.query).toHaveBeenNthCalledWith(2, 'ROLLBACK');
+    expect(client.query).not.toHaveBeenCalledWith('COMMIT');
+    expect(client.release).toHaveBeenCalledTimes(1);
   });
 
   it('mantem AppError operacional para asserts explicitos de erro', async () => {

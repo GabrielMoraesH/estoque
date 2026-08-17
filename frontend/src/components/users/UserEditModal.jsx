@@ -213,6 +213,8 @@ function UserEditModal({
                       key={empresa.id}
                       onClick={() => handleEmpresaToggle(empresaId)}
                       disabled={isSaving}
+                      aria-pressed={isSelected}
+                      aria-label={`${isSelected ? "Remover" : "Adicionar"} acesso a ${empresa.nome}`}
                     >
                       <span aria-hidden="true">{isSelected ? "\u2713" : ""}</span>
                       {empresa.nome}

@@ -119,6 +119,21 @@ describe('Protecao de rotas autenticadas', () => {
       expect(userService.listUsers).not.toHaveBeenCalled();
     });
 
+    it('com token valido de estoquista deve retornar 403', async () => {
+      jwt.verify.mockReturnValue({
+        id: 3,
+        role: 'estoquista'
+      });
+
+      const response = await request(app)
+        .get('/users')
+        .set('Authorization', bearerToken('token-estoquista'));
+
+      expect(response.status).toBe(403);
+      expect(response.body).toHaveProperty('error');
+      expect(userService.listUsers).not.toHaveBeenCalled();
+    });
+
     it('com token valido de admin deve retornar 200', async () => {
       const users = [
         {
@@ -142,6 +157,31 @@ describe('Protecao de rotas autenticadas', () => {
       expect(response.status).toBe(200);
       expect(response.body).toEqual(users);
       expect(userService.listUsers).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('RBAC da Gestao de Usuarios', () => {
+    const protectedOperations = [
+      ['listar', 'get', '/users'],
+      ['criar', 'post', '/users/register'],
+      ['editar', 'put', '/users/2'],
+      ['alterar status', 'patch', '/users/2/status']
+    ];
+
+    it.each(['gestor', 'estoquista'])('%s nao pode executar nenhuma operacao administrativa', async (role) => {
+      jwt.verify.mockReturnValue({ id: role === 'gestor' ? 2 : 3, role });
+
+      for (const [, method, path] of protectedOperations) {
+        const response = await request(app)[method](path)
+          .set('Authorization', bearerToken(`token-${role}`));
+
+        expect(response.status).toBe(403);
+      }
+
+      expect(userService.listUsers).not.toHaveBeenCalled();
+      expect(userService.registerUser).not.toHaveBeenCalled();
+      expect(userService.updateUser).not.toHaveBeenCalled();
+      expect(userService.updateUserStatus).not.toHaveBeenCalled();
     });
   });
 

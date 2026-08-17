@@ -45,29 +45,31 @@ function UserCreateForm({ form, empresas = [], empresasLoading = false, creating
     <Panel className="users-card">
       <form className="users-form" onSubmit={onSubmit}>
         <div className="users-field">
-          <label htmlFor="nome">Nome</label>
+          <label htmlFor="nome">Nome *</label>
           <input
             id="nome"
             value={form.nome}
             placeholder="Informe o nome completo"
             onChange={handleNomeChange}
             disabled={creating}
+            required
           />
         </div>
 
         <div className="users-field">
-          <label htmlFor="login">Login</label>
+          <label htmlFor="login">Login *</label>
           <input
             id="login"
             value={form.login}
             placeholder="Informe o login"
             onChange={handleLoginChange}
             disabled={creating}
+            required
           />
         </div>
 
         <div className="users-field">
-          <label htmlFor="senha">Senha</label>
+          <label htmlFor="senha">Senha *</label>
           <input
             id="senha"
             type="password"
@@ -113,7 +115,7 @@ function UserCreateForm({ form, empresas = [], empresasLoading = false, creating
         </div>
 
         <fieldset className="users-field users-companies-field">
-          <legend>Empresas de acesso</legend>
+          <legend>Empresas de acesso *</legend>
 
           <div className="users-company-options">
             {empresasLoading ? (

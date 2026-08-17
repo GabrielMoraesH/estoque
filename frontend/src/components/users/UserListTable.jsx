@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import DataState from "../ui/DataState";
 import Panel from "../ui/Panel";
 import TableContainer from "../ui/TableContainer";
@@ -196,7 +196,26 @@ function UserListTable({
   onRequestEdit,
   onRequestStatusChange
 }) {
-  const safeUsers = Array.isArray(users) ? users.filter(Boolean) : [];
+  const safeUsers = useMemo(
+    () => (Array.isArray(users) ? users.filter(Boolean) : []),
+    [users]
+  );
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [roleFilter, setRoleFilter] = useState("all");
+  const filteredUsers = useMemo(() => {
+    const term = search.trim().toLocaleLowerCase("pt-BR");
+
+    return safeUsers.filter((user) => {
+      const matchesSearch = !term || [user.nome, user.login]
+        .some((value) => String(value || "").toLocaleLowerCase("pt-BR").includes(term));
+      const status = getUserStatus(user);
+      const matchesStatus = statusFilter === "all" || status === statusFilter;
+      const matchesRole = roleFilter === "all" || user.role === roleFilter;
+
+      return matchesSearch && matchesStatus && matchesRole;
+    });
+  }, [roleFilter, safeUsers, search, statusFilter]);
 
   return (
     <Panel
@@ -205,15 +224,48 @@ function UserListTable({
       subtitle="Gerencie perfis, empresas de acesso e credenciais sem poluir a listagem principal."
       headerClassName="users-list-header"
     >
+      {!loading && !error && safeUsers.length > 0 && (
+        <div className="users-filters" role="search" aria-label="Buscar e filtrar usuarios">
+          <div className="users-field users-search-field">
+            <label htmlFor="users-search">Buscar por nome ou login</label>
+            <input
+              id="users-search"
+              type="search"
+              value={search}
+              placeholder="Digite um nome ou login"
+              onChange={(event) => setSearch(event.target.value)}
+            />
+          </div>
+          <div className="users-field">
+            <label htmlFor="users-status-filter">Status</label>
+            <select id="users-status-filter" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+              <option value="all">Todos</option>
+              <option value="active">Ativos</option>
+              <option value="inactive">Inativos</option>
+            </select>
+          </div>
+          <div className="users-field">
+            <label htmlFor="users-role-filter">Perfil</label>
+            <select id="users-role-filter" value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)}>
+              <option value="all">Todos</option>
+              <option value="admin">Admin</option>
+              <option value="gestor">Gestor</option>
+              <option value="estoquista">Estoquista</option>
+            </select>
+          </div>
+        </div>
+      )}
       <DataState
         loading={loading}
         error={error}
-        empty={safeUsers.length === 0}
+        empty={safeUsers.length === 0 || filteredUsers.length === 0}
         loadingTitle="Carregando usuarios"
         loadingMessage="Buscando a lista de acessos cadastrados."
         errorTitle="Nao foi possivel carregar os usuarios"
-        emptyTitle="Nenhum usuario cadastrado"
-        emptyMessage="Quando novos gestores ou estoquistas forem criados, eles aparecerao aqui."
+        emptyTitle={safeUsers.length === 0 ? "Nenhum usuario cadastrado" : "Nenhum usuario encontrado"}
+        emptyMessage={safeUsers.length === 0
+          ? "Quando novos gestores ou estoquistas forem criados, eles aparecerao aqui."
+          : "Ajuste a busca ou os filtros para ver outros usuarios."}
         panel={false}
       >
         <TableContainer className="users-table-wrapper">
@@ -232,7 +284,7 @@ function UserListTable({
             </thead>
 
             <tbody>
-              {safeUsers.map((user) => (
+              {filteredUsers.map((user) => (
                 <UserTableRow
                   key={user.id}
                   user={user}

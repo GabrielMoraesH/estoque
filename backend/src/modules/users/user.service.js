@@ -225,6 +225,10 @@ function createUserService({
         throw notFound('Usuario nao encontrado');
       }
 
+      if (Number(id) === Number(actor?.id) && role !== 'admin') {
+        throw badRequest('Voce nao pode alterar o perfil do seu proprio usuario');
+      }
+
       const passwordChanged = Boolean(senha && senha.trim());
       if (passwordChanged) {
         assertPasswordMinLength(senha);

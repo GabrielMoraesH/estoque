@@ -185,6 +185,14 @@
   border-bottom: 1px solid #e5ebf3;
 }
 
+.users-filters {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(140px, 0.35fr) minmax(140px, 0.35fr);
+  gap: 14px;
+  align-items: end;
+  margin-bottom: 20px;
+}
+
 .users-table-wrapper {
   width: 100%;
   overflow-x: auto;
@@ -651,6 +659,7 @@
 
   .users-form,
   .users-edit-form,
+  .users-filters,
   .users-role-level-row.has-level {
     grid-template-columns: 1fr;
   }
