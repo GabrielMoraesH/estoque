@@ -285,6 +285,28 @@ export async function getAuditLogs(filters = {}) {
   return requestJson(`/audit?${params.toString()}`, { authenticated: true });
 }
 
+export async function exportOcsCsv(filters = {}) {
+  const params = new URLSearchParams();
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== '' && value !== null && value !== undefined && value !== 'todas') params.set(key, String(value));
+  });
+  const path = `/ocs/export/csv${params.size ? `?${params}` : ''}`;
+  const headers = createHeaders({ authenticated: true });
+  const requestToken = headers.Authorization?.replace(/^Bearer\s+/, '') || null;
+  let response;
+  try { response = await fetch(`${API_URL}${path}`, { headers }); }
+  catch { throw new ApiError('Não foi possível conectar ao servidor.', { status: 0, path }); }
+  if (!response.ok) {
+    const data = await parseResponseBody(response);
+    const error = new ApiError(resolveErrorMessage(response.status, data), { status: response.status, data, path });
+    if (response.status === 401) unauthorizedHandler?.(error, { token: requestToken });
+    throw error;
+  }
+  const disposition = response.headers.get('content-disposition') || '';
+  const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1] || 'ocs.csv';
+  return { blob: await response.blob(), filename };
+}
+
 export async function updateUser(id, data) {
   return requestJson(`/users/${id}`, {
     method: "PUT",

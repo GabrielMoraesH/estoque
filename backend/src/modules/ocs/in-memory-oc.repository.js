@@ -1,4 +1,5 @@
 const { assertOcRepository } = require('./IOcRepository');
+const { filterExportRows } = require('./ocExport');
 
 function clone(value) {
   return value === null || value === undefined
@@ -305,8 +306,8 @@ function createInMemoryOcRepository({
         });
       },
 
-      async listByGestor({ empresaId, ocId = null }) {
-        return currentState.ocs
+      async listByGestor({ empresaId, ocId = null, exportFilters = null, limit = null }) {
+        const rows = currentState.ocs
           .filter((oc) => Number(oc.empresa_id) === Number(empresaId))
           .filter((oc) => ocId === null || Number(oc.id) === Number(ocId))
           .map((oc) => {
@@ -374,6 +375,8 @@ function createInMemoryOcRepository({
             const dateDiff = new Date(b.ultima_movimentacao_em || 0) - new Date(a.ultima_movimentacao_em || 0);
             return dateDiff || Number(b.id) - Number(a.id);
           });
+        const filteredRows = exportFilters ? filterExportRows(rows, exportFilters) : rows;
+        return limit === null ? filteredRows : filteredRows.slice(0, limit);
       },
 
       async listByEstoquista({ estoquistaId, empresaId, itemStatus, ocStatus }) {

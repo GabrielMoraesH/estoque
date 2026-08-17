@@ -51,6 +51,7 @@ jest.mock('../modules/users/userService', () => ({
 }));
 
 jest.mock('../modules/ocs/ocService', () => ({
+  exportOcsCsv: jest.fn(),
   createOcWithItems: jest.fn(),
   listMyGestorOcs: jest.fn(),
   listOcsByGestor: jest.fn(),
@@ -380,6 +381,34 @@ describe('Protecao de rotas autenticadas', () => {
         },
         empresaId: 1
       });
+    });
+  });
+
+  describe('GET /ocs/export/csv', () => {
+    it('retorna 401 sem autenticacao', async () => {
+      const response = await request(app).get('/ocs/export/csv').set('x-empresa-id', '1');
+      expect(response.status).toBe(401);
+      expect(ocService.exportOcsCsv).not.toHaveBeenCalled();
+    });
+
+    it('retorna 403 para estoquista', async () => {
+      jwt.verify.mockReturnValue({ id: 3, role: 'estoquista' });
+      mockActiveEmpresaAccess();
+      const response = await request(app).get('/ocs/export/csv').set('Authorization', bearerToken('token-estoquista')).set('x-empresa-id', '1');
+      expect(response.status).toBe(403);
+      expect(ocService.exportOcsCsv).not.toHaveBeenCalled();
+    });
+
+    it.each([[1, 'admin'], [2, 'gestor']])('permite %s e usa a empresa validada', async (id, role) => {
+      jwt.verify.mockReturnValue({ id, role });
+      mockActiveEmpresaAccess();
+      ocService.exportOcsCsv.mockResolvedValue({ csv: '\uFEFF"OC"', filename: 'ocs-DIMEBRAS_PR-2026-08-17.csv', count: 0 });
+      const response = await request(app).get('/ocs/export/csv?status=em_contagem&search=OC-1').set('Authorization', bearerToken(`token-${role}`)).set('x-empresa-id', '1');
+      expect(response.status).toBe(200);
+      expect(response.headers['content-type']).toContain('text/csv');
+      expect(response.headers['content-disposition']).toContain('ocs-DIMEBRAS_PR-2026-08-17.csv');
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(ocService.exportOcsCsv).toHaveBeenCalledWith(expect.objectContaining({ empresaId: 1, filters: expect.objectContaining({ status: 'em_contagem', search: 'OC-1' }) }));
     });
   });
 

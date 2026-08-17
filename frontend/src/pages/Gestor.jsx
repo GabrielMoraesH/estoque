@@ -1,5 +1,5 @@
 import Layout from "../components/Layout";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import useAuth from "../hooks/useAuth";
 import useEmpresa from "../hooks/useEmpresa";
@@ -15,6 +15,8 @@ import GestorOcCard from "../components/ocs/GestorOcCard";
 import GestorOverviewStats from "../components/ocs/GestorOverviewStats";
 import { feedbackMessages, getFeedbackErrorMessage } from "../utils/feedbackMessages";
 import { asArray, getOperationalOcStatus, getRenderableList, summarizeOcsByStatus } from "../utils/ocData";
+import { exportOcsCsv } from "../services/api";
+import { buildOcExportFilters, downloadBlob } from "../utils/exportCsv";
 import "../styles/oc.css";
 import "../styles/app-pages.css";
 
@@ -32,6 +34,15 @@ function Gestor() {
   const [loadedEmpresaId, setLoadedEmpresaId] = useState(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("todas");
+  const [exporting, setExporting] = useState(false);
+  const activeEmpresaIdRef = useRef(activeEmpresa?.id || null);
+  const exportGenerationRef = useRef(0);
+  activeEmpresaIdRef.current = activeEmpresa?.id || null;
+
+  useEffect(() => {
+    exportGenerationRef.current += 1;
+    setExporting(false);
+  }, [activeEmpresa?.id]);
 
   useEffect(() => {
     const empresaIdAtLoad = activeEmpresa?.id || null;
@@ -116,6 +127,25 @@ function Gestor() {
     });
   }, [location.pathname, navigate]);
 
+  const handleExport = useCallback(async () => {
+    if (exporting || !activeEmpresa?.id) return;
+    const empresaIdAtStart = activeEmpresa.id;
+    const generationAtStart = exportGenerationRef.current;
+    setExporting(true);
+    try {
+      const result = await exportOcsCsv(buildOcExportFilters({ search, status: statusFilter }));
+      if (activeEmpresaIdRef.current !== empresaIdAtStart || exportGenerationRef.current !== generationAtStart) {
+        return;
+      }
+      downloadBlob(result.blob, result.filename);
+      showToast("Exportação CSV gerada com sucesso.");
+    } catch (error) {
+      if (activeEmpresaIdRef.current === empresaIdAtStart && exportGenerationRef.current === generationAtStart) showToast(getFeedbackErrorMessage(error, "Não foi possível exportar as OCs."), "error");
+    } finally {
+      if (exportGenerationRef.current === generationAtStart) setExporting(false);
+    }
+  }, [activeEmpresa?.id, exporting, search, showToast, statusFilter]);
+
   if (!canViewGestorOcs) {
     return <Navigate to="/dashboard" replace />;
   }
@@ -136,15 +166,18 @@ function Gestor() {
           className="toolbar-card gestor-toolbar-card"
           title="Central do gestor"
           subtitle="Crie novas OCs e acompanhe abaixo tudo o que já foi distribuído para contagem."
-          actions={canCreateOc && (
-            <button
+          actions={<div className="gestor-toolbar-actions">
+            <button className="secondary-button" type="button" onClick={handleExport} disabled={exporting || effectiveLoading}>
+              {exporting ? "Gerando CSV..." : "Exportar CSV"}
+            </button>
+            {canCreateOc && <button
               className="primary-button"
               type="button"
               onClick={handleGoToGerarOc}
             >
               Gerar OC
-            </button>
-          )}
+            </button>}
+          </div>}
         />
 
         <SectionHeader

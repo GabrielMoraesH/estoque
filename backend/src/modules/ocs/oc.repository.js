@@ -202,9 +202,24 @@ function createOcRepository(db = pool) {
       );
     },
 
-    async listByGestor({ empresaId, ocId = null }) {
+    async listByGestor({ empresaId, ocId = null, exportFilters = null, limit = null }) {
+      const params = [empresaId, ocId];
+      const exportWhere = [];
+      const addParam = (value) => { params.push(value); return `$${params.length}`; };
+      if (exportFilters?.search) {
+        const literalSearch = String(exportFilters.search).replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
+        const parameter = addParam(literalSearch);
+        exportWhere.push(`(CAST(id AS text) ILIKE '%' || ${parameter} || '%' ESCAPE '\\' OR codigo ILIKE '%' || ${parameter} || '%' ESCAPE '\\')`);
+      }
+      if (exportFilters?.creator_id) exportWhere.push(`gestor_id = ${addParam(exportFilters.creator_id)}`);
+      if (exportFilters?.responsible_id) exportWhere.push(`responsavel_atual_id = ${addParam(exportFilters.responsible_id)}`);
+      if (exportFilters?.date_from) exportWhere.push(`created_at >= (${addParam(exportFilters.date_from)}::date::timestamp AT TIME ZONE 'UTC')`);
+      if (exportFilters?.date_to) exportWhere.push(`created_at < ((${addParam(exportFilters.date_to)}::date + 1)::timestamp AT TIME ZONE 'UTC')`);
+      if (exportFilters?.status) exportWhere.push(`operational_status = ${addParam(exportFilters.status)}`);
+      const limitClause = limit === null ? '' : `LIMIT ${addParam(limit)}`;
       const result = await db.query(
-        `SELECT ocs.*,
+        `WITH export_rows AS (
+         SELECT ocs.*,
                 CASE WHEN product_summary.qtd > 0 THEN product_summary.qtd ELSE legacy_summary.qtd END AS qtd,
                 COALESCE(latest_assignment_user.nome, estoquista.nome) AS estoquista_nome,
                 criador.nome AS criador_nome,
@@ -228,7 +243,15 @@ function createOcRepository(db = pool) {
                     COALESCE(movement.ultima_finalizacao_em, '-infinity'::timestamptz)
                   ),
                   '-infinity'::timestamptz
-                ) AS ultima_movimentacao_em
+                ) AS ultima_movimentacao_em,
+                CASE
+                  WHEN LOWER(COALESCE(ocs.status, 'aberta')) = 'finalizada' THEN 'finalizada'
+                  WHEN (latest_assignment.fase = 'recontagem' AND latest_assignment.status = 'ativo')
+                    OR legacy_summary.has_recount
+                    OR LOWER(COALESCE(ocs.status, 'aberta')) IN ('recontar', 'recontagem') THEN 'em_recontagem'
+                  WHEN LOWER(COALESCE(ocs.status, 'aberta')) = 'aguardando_aprovacao' THEN 'aguardando_aprovacao'
+                  ELSE 'em_contagem'
+                END AS operational_status
          FROM ocs
          LEFT JOIN LATERAL (
            SELECT assignments.id, assignments.ciclo, assignments.estoquista_id, assignments.fase, assignments.status
@@ -280,11 +303,16 @@ function createOcRepository(db = pool) {
          LEFT JOIN empresas ON empresas.id = ocs.empresa_id
          WHERE ocs.empresa_id = $1
            AND ($2::int IS NULL OR ocs.id = $2)
-         ORDER BY ultima_movimentacao_em DESC NULLS LAST, ocs.id DESC`,
-        [empresaId, ocId]
+         )
+         SELECT * FROM export_rows
+         ${exportWhere.length ? `WHERE ${exportWhere.join(' AND ')}` : ''}
+         ORDER BY ultima_movimentacao_em DESC NULLS LAST, id DESC
+         ${limitClause}`,
+        params
       );
 
-      return result.rows;
+      if (exportFilters) return result.rows;
+      return result.rows.map(({ operational_status, ...row }) => row);
     },
 
     async listByEstoquista({ estoquistaId, empresaId, itemStatus, ocStatus }) {

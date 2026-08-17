@@ -17,7 +17,8 @@ const {
   listItemsSchema,
   historyDetailsSchema,
   saveCountSchema,
-  finalizeOcSchema
+  finalizeOcSchema,
+  exportOcSchema
 } = require('./ocSchemas');
 
 const router = express.Router();
@@ -25,6 +26,7 @@ const router = express.Router();
 router.use(requireAuth);
 router.use(requireActiveEmpresa);
 
+router.get('/export/csv', requireRole('admin', 'gestor'), validate(exportOcSchema), ocController.exportCsv);
 router.post('/create-with-items', requireRole('admin', 'gestor'), validate(createOcWithItemsSchema), ocController.createWithItems);
 router.get('/dashboard', requireRole('admin', 'gestor', 'estoquista'), ocController.dashboard);
 router.get('/minhas/gestor', requireRole('gestor'), validate(myGestorOcListSchema), ocController.listMyGestorOcs);

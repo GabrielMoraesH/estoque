@@ -4,6 +4,20 @@ const { getRequestContext } = require('../../utils/requestContext');
 
 function createOcController({ service = ocService } = {}) {
   return {
+    exportCsv: asyncHandler(async (req, res) => {
+      const result = await service.exportOcsCsv({
+        user: req.user,
+        empresaId: req.empresaId,
+        empresa: req.activeEmpresa,
+        filters: req.query,
+        auditContext: getRequestContext(req)
+      });
+      res.set('Content-Type', 'text/csv; charset=utf-8');
+      res.set('Content-Disposition', `attachment; filename="${result.filename}"`);
+      res.set('Cache-Control', 'no-store');
+      res.send(result.csv);
+    }),
+
     createWithItems: asyncHandler(async (req, res) => {
       const result = await service.createOcWithItems({
         user: req.user,

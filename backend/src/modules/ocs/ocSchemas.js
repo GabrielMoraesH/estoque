@@ -41,7 +41,19 @@ const saveCountBodySchema = z.object({
   path: ['oc_localizacao_id']
 });
 
+const exportOcQuerySchema = z.object({
+  status: z.enum(['em_contagem', 'aguardando_aprovacao', 'em_recontagem', 'finalizada']).optional(),
+  date_from: z.iso.date().optional(),
+  date_to: z.iso.date().optional(),
+  creator_id: z.coerce.number().int().positive().optional(),
+  responsible_id: z.coerce.number().int().positive().optional(),
+  search: z.string().trim().max(80).optional()
+}).refine((data) => !data.date_from || !data.date_to || data.date_from <= data.date_to, {
+  message: 'Data inicial deve ser anterior ou igual a data final', path: ['date_to']
+});
+
 module.exports = {
+  exportOcSchema: { params: emptyObjectSchema, query: exportOcQuerySchema },
   createOcWithItemsSchema: {
     body: createOcWithItemsBodySchema,
     params: emptyObjectSchema,
