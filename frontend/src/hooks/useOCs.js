@@ -7,6 +7,7 @@ import {
   getItemsByOC,
   getOCsByEstoquista,
   getOCsByGestor,
+  getOcHistoryDetails,
   getOCsForApproval,
   salvarContagem,
   sendItemsToRecount
@@ -41,6 +42,10 @@ export function useOCs() {
     void activeEmpresaId;
     return getItemsByOC(ocId);
   }, [activeEmpresaId]);
+  const fetchOcHistory = useCallback((ocId) => {
+    void activeEmpresaId;
+    return getOcHistoryDetails(ocId);
+  }, [activeEmpresaId]);
   const saveItemCount = useCallback((data) => {
     void activeEmpresaId;
     return salvarContagem(data);
@@ -68,6 +73,7 @@ export function useOCs() {
     fetchEstoquistas,
     fetchApprovalOCs,
     fetchOcItems,
+    fetchOcHistory,
     saveItemCount,
     finalizeOc,
     approveOc,

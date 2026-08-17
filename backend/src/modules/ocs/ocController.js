@@ -111,6 +111,15 @@ function createOcController({ service = ocService } = {}) {
       res.json(result);
     }),
 
+    getHistoryDetails: asyncHandler(async (req, res) => {
+      const result = await service.getOcHistoryDetails({
+        user: req.user,
+        empresaId: req.empresaId,
+        ocId: req.params.id
+      });
+      res.json(result);
+    }),
+
     saveCount: asyncHandler(async (req, res) => {
       const result = await service.saveOcCount({
         user: req.user,

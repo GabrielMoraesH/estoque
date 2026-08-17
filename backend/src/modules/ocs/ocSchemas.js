@@ -88,6 +88,10 @@ module.exports = {
     params: idParamSchema,
     query: emptyObjectSchema
   },
+  historyDetailsSchema: {
+    params: idParamSchema,
+    query: emptyObjectSchema
+  },
   saveCountSchema: {
     body: saveCountBodySchema,
     params: emptyObjectSchema,

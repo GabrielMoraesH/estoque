@@ -35,6 +35,7 @@ function createRepositoryMock(overrides = {}) {
     listOperationalProducts: jest.fn(),
     listOperationalLocationsByProduct: jest.fn(),
     listAdminApprovalProducts: jest.fn(),
+    listOcAssignments: jest.fn(),
     findLocalizacaoContextById: jest.fn().mockResolvedValue(null),
     findAssignmentProduto: jest.fn(),
     findActiveFirstCountAssignment: jest.fn(),
@@ -2836,6 +2837,118 @@ describe('OcService unitario com repository mockado', () => {
 
   it('falha cedo quando repository nao implementa IOcRepository', () => {
     expect(() => createOcService({ repository: {} })).toThrow(TypeError);
+  });
+
+  it('monta historico administrativo novo com ciclos e produtos parciais preservados', async () => {
+    const products = [
+      { oc_produto_id: 10, descricao: 'Produto igual', saldo_sistema_snapshot: 10 },
+      { oc_produto_id: 11, descricao: 'Produto igual', saldo_sistema_snapshot: 20 }
+    ];
+    const cycles = [
+      { id: 100, ciclo: 1, fase: 'contagem', status: 'finalizado', responsavel_nome: 'Ana', produto_ids: [10, 11] },
+      { id: 101, ciclo: 2, fase: 'recontagem', status: 'finalizado', responsavel_nome: 'Beto', produto_ids: [11] },
+      { id: 102, ciclo: 3, fase: 'recontagem', status: 'ativo', responsavel_nome: 'Carla', produto_ids: [11] }
+    ];
+    const repository = createRepositoryMock({
+      findOcById: jest.fn().mockResolvedValue({ id: 55, empresa_id: 1, gestor_id: 12 }),
+      listByGestor: jest.fn().mockResolvedValue([{ id: 55, empresa_id: 1, criador_nome: 'Admin' }]),
+      ocHasNewModel: jest.fn().mockResolvedValue(true),
+      listAdminApprovalProducts: jest.fn().mockResolvedValue(products),
+      listOcAssignments: jest.fn().mockResolvedValue(cycles)
+    });
+    const { service } = createService({ repository });
+
+    await expect(service.getOcHistoryDetails({ user: gestor, empresaId: 1, ocId: 55 }))
+      .resolves.toEqual({
+        oc: { id: 55, empresa_id: 1, criador_nome: 'Admin' },
+        modelo: 'novo',
+        produtos: products,
+        ciclos: cycles
+      });
+  });
+
+  it('bloqueia estoquista e isola historico administrativo por empresa', async () => {
+    const repository = createRepositoryMock({
+      findOcById: jest.fn().mockResolvedValue({ id: 55, empresa_id: 2 })
+    });
+    const { service } = createService({ repository });
+
+    await expect(service.getOcHistoryDetails({ user: estoquista, empresaId: 1, ocId: 55 }))
+      .rejects.toMatchObject({ statusCode: 403 });
+    await expect(service.getOcHistoryDetails({ user: gestor, empresaId: 1, ocId: 55 }))
+      .rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it('consolida ciclo 3, parcial, assignment ativo, lotes, homonimos e multiplas localizacoes', async () => {
+    const repository = createInMemoryOcRepository({
+      users: [
+        { id: 21, nome: 'Contador A' },
+        { id: 22, nome: 'Contador B' },
+        { id: 23, nome: 'Contador C' },
+        { id: 24, nome: 'Contador ativo' }
+      ],
+      ocs: [{ id: 1, empresa_id: 1, gestor_id: 1, status: OC_STATUS.OPEN }],
+      ocProdutos: [
+        { id: 10, oc_id: 1, descricao_snapshot: 'Dipirona', saldo_sistema_snapshot: 10, status: 'contado' },
+        { id: 11, oc_id: 1, descricao_snapshot: 'Dipirona', saldo_sistema_snapshot: 20, status: 'contado' },
+        { id: 12, oc_id: 1, descricao_snapshot: 'C', saldo_sistema_snapshot: 30, status: 'contado' },
+        { id: 13, oc_id: 1, descricao_snapshot: 'D', saldo_sistema_snapshot: 40, status: 'contado' },
+        { id: 14, oc_id: 1, descricao_snapshot: 'Multi', saldo_sistema_snapshot: 14, status: 'contado' }
+      ],
+      ocLocalizacoes: [
+        { id: 100, oc_produto_id: 10, endereco_snapshot: 'A1', codigo_barras_snapshot: 'A', validade_snapshot: '2028-01-01' },
+        { id: 101, oc_produto_id: 11, endereco_snapshot: 'B1' },
+        { id: 102, oc_produto_id: 12, endereco_snapshot: 'C1' },
+        { id: 103, oc_produto_id: 13, endereco_snapshot: 'D1' },
+        { id: 104, oc_produto_id: 14, endereco_snapshot: 'M1' },
+        { id: 105, oc_produto_id: 14, endereco_snapshot: 'M2' }
+      ],
+      ocAssignments: [
+        { id: 1, oc_id: 1, ciclo: 1, fase: 'contagem', status: 'finalizado', estoquista_id: 21 },
+        { id: 2, oc_id: 1, ciclo: 2, fase: 'recontagem', status: 'finalizado', estoquista_id: 22 },
+        { id: 3, oc_id: 1, ciclo: 3, fase: 'recontagem', status: 'finalizado', estoquista_id: 23 },
+        { id: 4, oc_id: 1, ciclo: 4, fase: 'recontagem', status: 'ativo', estoquista_id: 24 }
+      ],
+      ocAssignmentProdutos: [
+        ...[10, 11, 12, 13, 14].map((oc_produto_id) => ({ assignment_id: 1, oc_produto_id })),
+        ...[11, 13, 14].map((oc_produto_id) => ({ assignment_id: 2, oc_produto_id })),
+        { assignment_id: 3, oc_produto_id: 11 },
+        { assignment_id: 4, oc_produto_id: 11 }
+      ],
+      counts: [
+        { id: 1, oc_id: 1, assignment_id: 1, oc_localizacao_id: 100, user_id: 21, quantidade: 10, lote: 'A1', created_at: '2026-01-01T01:00:00Z' },
+        { id: 2, oc_id: 1, assignment_id: 1, oc_localizacao_id: 101, user_id: 21, quantidade: 20, lote: 'B1', created_at: '2026-01-01T02:00:00Z' },
+        { id: 3, oc_id: 1, assignment_id: 1, oc_localizacao_id: 102, user_id: 21, quantidade: 30, lote: 'C1', created_at: '2026-01-01T03:00:00Z' },
+        { id: 4, oc_id: 1, assignment_id: 1, oc_localizacao_id: 103, user_id: 21, quantidade: 40, lote: 'D1', created_at: '2026-01-01T04:00:00Z' },
+        { id: 5, oc_id: 1, assignment_id: 1, oc_localizacao_id: 104, user_id: 21, quantidade: 5, lote: 'M1', created_at: '2026-01-01T05:00:00Z' },
+        { id: 6, oc_id: 1, assignment_id: 1, oc_localizacao_id: 105, user_id: 21, quantidade: 7, lote: 'M2', created_at: '2026-01-01T06:00:00Z' },
+        { id: 7, oc_id: 1, assignment_id: 2, oc_localizacao_id: 101, user_id: 22, quantidade: 25, lote: 'B2', created_at: '2026-01-02T01:00:00Z' },
+        { id: 8, oc_id: 1, assignment_id: 2, oc_localizacao_id: 103, user_id: 22, quantidade: 45, lote: 'D2', created_at: '2026-01-02T02:00:00Z' },
+        { id: 9, oc_id: 1, assignment_id: 2, oc_localizacao_id: 104, user_id: 22, quantidade: 6, lote: 'M3', created_at: '2026-01-02T03:00:00Z' },
+        { id: 10, oc_id: 1, assignment_id: 2, oc_localizacao_id: 105, user_id: 22, quantidade: 8, lote: 'M4', created_at: '2026-01-02T04:00:00Z' },
+        { id: 11, oc_id: 1, assignment_id: 3, oc_localizacao_id: 101, user_id: 23, quantidade: 27, lote: 'B3', created_at: '2026-01-03T01:00:00Z' },
+        { id: 12, oc_id: 1, assignment_id: 4, oc_localizacao_id: 101, user_id: 24, quantidade: 99, lote: 'ATIVO', created_at: '2026-01-04T01:00:00Z' }
+      ]
+    });
+
+    const [products, cycles] = await Promise.all([
+      repository.listAdminApprovalProducts({ ocId: 1 }),
+      repository.listOcAssignments({ ocId: 1 })
+    ]);
+    const byId = Object.fromEntries(products.map((product) => [product.id, product]));
+
+    expect(products.filter((product) => product.descricao === 'Dipirona')).toHaveLength(2);
+    expect(cycles.map((cycle) => cycle.produto_ids)).toEqual([
+      [10, 11, 12, 13, 14], [11, 13, 14], [11], [11]
+    ]);
+    expect(cycles.map((cycle) => cycle.responsavel_nome)).toEqual([
+      'Contador A', 'Contador B', 'Contador C', 'Contador ativo'
+    ]);
+    expect([10, 11, 12, 13].map((id) => byId[id].saldo_contado_vigente)).toEqual([10, 27, 30, 45]);
+    expect(byId[11].localizacoes[0]).toMatchObject({ saldo_contado: 27, lote: 'B3' });
+    expect(byId[11].localizacoes[0].contagens.map((count) => count.lote)).toEqual(['B1', 'B2', 'B3', 'ATIVO']);
+    expect(byId[14]).toMatchObject({ saldo_contado_vigente: 14, diferenca: 0 });
+    expect(byId[14].localizacoes).toHaveLength(2);
   });
 });
 

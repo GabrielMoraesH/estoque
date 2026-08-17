@@ -202,7 +202,7 @@ function createOcRepository(db = pool) {
       );
     },
 
-    async listByGestor({ empresaId }) {
+    async listByGestor({ empresaId, ocId = null }) {
       const result = await db.query(
         `SELECT ocs.*,
                 CASE WHEN product_summary.qtd > 0 THEN product_summary.qtd ELSE legacy_summary.qtd END AS qtd,
@@ -279,8 +279,9 @@ function createOcRepository(db = pool) {
          LEFT JOIN users estoquista ON estoquista.id = ocs.estoquista_id
          LEFT JOIN empresas ON empresas.id = ocs.empresa_id
          WHERE ocs.empresa_id = $1
+           AND ($2::int IS NULL OR ocs.id = $2)
          ORDER BY ultima_movimentacao_em DESC NULLS LAST, ocs.id DESC`,
-        [empresaId]
+        [empresaId, ocId]
       );
 
       return result.rows;
@@ -714,7 +715,8 @@ function createOcRepository(db = pool) {
                 last_count.user_id AS ultima_contagem_user_id,
                 last_user.nome AS ultima_contagem_usuario_nome,
                 last_count.created_at AS ultima_contagem_em,
-                COALESCE(count_totals.total_contagens, 0)::int AS total_contagens
+                COALESCE(count_totals.total_contagens, 0)::int AS total_contagens,
+                COALESCE(history.contagens, '[]'::json) AS contagens
          FROM oc_items
          LEFT JOIN LATERAL (
            SELECT contagens.user_id, contagens.created_at
@@ -737,6 +739,25 @@ function createOcRepository(db = pool) {
            FROM contagens
            WHERE contagens.item_id = oc_items.id
          ) count_totals ON true
+         LEFT JOIN LATERAL (
+           SELECT json_agg(
+                    json_build_object(
+                      'id', contagens.id,
+                      'assignment_id', contagens.assignment_id,
+                      'ciclo', NULL,
+                      'fase', NULL,
+                      'assignment_status', NULL,
+                      'user_id', contagens.user_id,
+                      'usuario_nome', users.nome,
+                      'quantidade', contagens.quantidade,
+                      'lote', contagens.lote,
+                      'created_at', contagens.created_at
+                    ) ORDER BY contagens.created_at ASC, contagens.id ASC
+                  ) AS contagens
+           FROM contagens
+           LEFT JOIN users ON users.id = contagens.user_id
+           WHERE contagens.item_id = oc_items.id
+         ) history ON true
          WHERE oc_items.oc_id = $1
          ORDER BY oc_items.id ASC`,
         [ocId]
@@ -866,6 +887,8 @@ function createOcRepository(db = pool) {
                   json_build_object(
                     'id', localizacoes.id,
                     'endereco', localizacoes.endereco_snapshot,
+                    'codigo_barras_snapshot', localizacoes.codigo_barras_snapshot,
+                    'validade_snapshot', localizacoes.validade_snapshot,
                     'saldo_contado', vigente.quantidade,
                     'lote', vigente.lote,
                     'contado_por', vigente.usuario_nome,
@@ -964,6 +987,33 @@ function createOcRepository(db = pool) {
         [ocId]
       );
 
+      return result.rows;
+    },
+    async listOcAssignments({ ocId }) {
+      const result = await db.query(
+        `SELECT assignments.id,
+                assignments.oc_id,
+                assignments.ciclo,
+                assignments.fase,
+                assignments.status,
+                assignments.estoquista_id,
+                users.nome AS responsavel_nome,
+                assignments.created_at,
+                assignments.finalizado_em,
+                COALESCE(
+                  json_agg(assignment_products.oc_produto_id ORDER BY assignment_products.oc_produto_id)
+                    FILTER (WHERE assignment_products.oc_produto_id IS NOT NULL),
+                  '[]'::json
+                ) AS produto_ids
+         FROM oc_assignments assignments
+         LEFT JOIN users ON users.id = assignments.estoquista_id
+         LEFT JOIN oc_assignment_produtos assignment_products
+           ON assignment_products.assignment_id = assignments.id
+         WHERE assignments.oc_id = $1
+         GROUP BY assignments.id, users.nome
+         ORDER BY assignments.ciclo ASC, assignments.id ASC`,
+        [ocId]
+      );
       return result.rows;
     },
     async findLocalizacaoContextById(ocLocalizacaoId, { forUpdate = false } = {}) {

@@ -305,9 +305,10 @@ function createInMemoryOcRepository({
         });
       },
 
-      async listByGestor({ empresaId }) {
+      async listByGestor({ empresaId, ocId = null }) {
         return currentState.ocs
           .filter((oc) => Number(oc.empresa_id) === Number(empresaId))
+          .filter((oc) => ocId === null || Number(oc.id) === Number(ocId))
           .map((oc) => {
             const ocItems = currentState.items.filter((item) => Number(item.oc_id) === Number(oc.id));
             const products = currentState.ocProdutos.filter((item) => Number(item.oc_id) === Number(oc.id));
@@ -645,6 +646,19 @@ function createInMemoryOcRepository({
         return clone(
           currentState.items
             .filter((item) => Number(item.oc_id) === Number(ocId))
+            .map((item) => ({
+              ...item,
+              contagens: currentState.counts
+                .filter((count) => Number(count.item_id) === Number(item.id))
+                .map((count) => ({
+                  ...count,
+                  ciclo: null,
+                  fase: null,
+                  assignment_status: null,
+                  usuario_nome: currentState.users.find((user) => Number(user.id) === Number(count.user_id))?.nome || null
+                }))
+                .sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0) || Number(a.id) - Number(b.id))
+            }))
             .sort((a, b) => Number(a.id) - Number(b.id))
         );
       },
@@ -787,6 +801,8 @@ function createInMemoryOcRepository({
                   return {
                     id: localizacao.id,
                     endereco: localizacao.endereco_snapshot,
+                    codigo_barras_snapshot: localizacao.codigo_barras_snapshot || null,
+                    validade_snapshot: localizacao.validade_snapshot || null,
                     saldo_contado: vigente?.quantidade ?? null,
                     lote: vigente?.lote ?? null,
                     contado_por: vigente?.usuario_nome || null,
@@ -831,6 +847,25 @@ function createInMemoryOcRepository({
             })
             .sort((a, b) => Number(a.id) - Number(b.id))
         );
+      },
+
+      async listOcAssignments({ ocId }) {
+        return clone(currentState.ocAssignments
+          .filter((assignment) => Number(assignment.oc_id) === Number(ocId))
+          .map((assignment) => {
+            const responsible = currentState.users.find(
+              (user) => Number(user.id) === Number(assignment.estoquista_id)
+            );
+            return {
+              ...assignment,
+              responsavel_nome: responsible?.nome || null,
+              produto_ids: currentState.ocAssignmentProdutos
+                .filter((item) => Number(item.assignment_id) === Number(assignment.id))
+                .map((item) => Number(item.oc_produto_id))
+                .sort((a, b) => a - b)
+            };
+          })
+          .sort((a, b) => Number(a.ciclo) - Number(b.ciclo) || Number(a.id) - Number(b.id)));
       },
 
       async findLocalizacaoContextById(ocLocalizacaoId) {

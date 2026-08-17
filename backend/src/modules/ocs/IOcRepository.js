@@ -29,6 +29,7 @@ const OC_REPOSITORY_METHODS = [
   'listOperationalProducts',
   'listOperationalLocationsByProduct',
   'listAdminApprovalProducts',
+  'listOcAssignments',
   'findLocalizacaoContextById',
   'findAssignmentProduto',
   'findActiveFirstCountAssignment',

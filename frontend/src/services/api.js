@@ -210,6 +210,10 @@ export async function getOCsByGestor({ role, id } = {}) {
   });
 }
 
+export async function getOcHistoryDetails(ocId) {
+  return requestJson(`/ocs/historico/${ocId}`, { authenticated: true });
+}
+
 export async function getOCsByEstoquista({ role, id } = {}) {
   const endpoint = getOwnOrAdminOcEndpoint(
     { role, id },

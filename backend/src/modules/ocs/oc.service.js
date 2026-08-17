@@ -60,6 +60,7 @@ function createOcService({ repository, audit = noopAudit } = {}) {
       ultima_contagem_usuario_nome,
       ultima_contagem_em,
       total_contagens,
+      contagens,
       ...safeItem
     } = item;
 
@@ -1071,6 +1072,48 @@ function createOcService({ repository, audit = noopAudit } = {}) {
     return items;
   }
 
+  async function getOcHistoryDetails({ user, empresaId, ocId }) {
+    if (!isAdmin(user) && !isGestor(user)) {
+      throw forbidden('Voce nao tem permissao para acessar este historico');
+    }
+
+    const oc = await getOcOrFail(ocId);
+    assertOcEmpresa(oc, empresaId);
+    const listRows = await repository.listByGestor({ empresaId, ocId });
+    const summary = listRows.find((row) => Number(row.id) === Number(ocId));
+
+    if (await repository.ocHasNewModel(ocId)) {
+      const [products, assignments] = await Promise.all([
+        repository.listAdminApprovalProducts({ ocId }),
+        repository.listOcAssignments({ ocId })
+      ]);
+      return { oc: summary || oc, modelo: 'novo', produtos: products, ciclos: assignments };
+    }
+
+    const items = await repository.listItems(ocId);
+    return {
+      oc: summary || oc,
+      modelo: 'legado',
+      produtos: items.map((item) => ({
+        ...item,
+        oc_produto_id: null,
+        produto: item.produto,
+        descricao: item.produto,
+        saldo_sistema_snapshot: item.saldo_sistema,
+        saldo_contado_vigente: item.saldo_contado,
+        localizacoes: [{
+          id: item.id,
+          endereco: item.endereco,
+          saldo_contado: item.saldo_contado,
+          lote: item.lote,
+          contagens: item.contagens || []
+        }],
+        new_model: false
+      })),
+      ciclos: []
+    };
+  }
+
   async function saveOcCount({ user, empresaId, payload, auditContext }) {
     const { oc_id, item_id, oc_localizacao_id, quantidade, lote } = payload;
     assertValidCountQuantity(quantidade);
@@ -1381,6 +1424,7 @@ function createOcService({ repository, audit = noopAudit } = {}) {
     approveOc,
     sendOcToRecount,
     listOcItems,
+    getOcHistoryDetails,
     saveOcCount,
     finalizeOc,
     getOcOrFail

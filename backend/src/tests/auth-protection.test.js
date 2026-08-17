@@ -62,6 +62,7 @@ jest.mock('../modules/ocs/ocService', () => ({
   approveOc: jest.fn(),
   sendOcToRecount: jest.fn(),
   listOcItems: jest.fn(),
+  getOcHistoryDetails: jest.fn(),
   saveOcCount: jest.fn(),
   finalizeOc: jest.fn(),
   getOcOrFail: jest.fn()
@@ -349,6 +350,39 @@ describe('Protecao de rotas autenticadas', () => {
         },
         empresaId: 1
       });
+    });
+  });
+
+  describe('GET /ocs/historico/:id', () => {
+    it('bloqueia estoquista na propria rota', async () => {
+      jwt.verify.mockReturnValue({ id: 3, role: 'estoquista' });
+      mockActiveEmpresaAccess();
+
+      const response = await request(app)
+        .get('/ocs/historico/10')
+        .set('Authorization', bearerToken('token-estoquista'))
+        .set('x-empresa-id', '1');
+
+      expect(response.status).toBe(403);
+      expect(ocService.getOcHistoryDetails).not.toHaveBeenCalled();
+    });
+
+    it.each([[1, 'admin'], [2, 'gestor']])('permite perfil administrativo %s', async (id, role) => {
+      jwt.verify.mockReturnValue({ id, role });
+      mockActiveEmpresaAccess();
+      ocService.getOcHistoryDetails.mockResolvedValue({ oc: { id: 10 }, produtos: [], ciclos: [] });
+
+      const response = await request(app)
+        .get('/ocs/historico/10')
+        .set('Authorization', bearerToken(`token-${role}`))
+        .set('x-empresa-id', '1');
+
+      expect(response.status).toBe(200);
+      expect(ocService.getOcHistoryDetails).toHaveBeenCalledWith(expect.objectContaining({
+        empresaId: 1,
+        ocId: 10,
+        user: expect.objectContaining({ id, role })
+      }));
     });
   });
 

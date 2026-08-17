@@ -15,6 +15,7 @@ const {
   approveOcSchema,
   recountOcSchema,
   listItemsSchema,
+  historyDetailsSchema,
   saveCountSchema,
   finalizeOcSchema
 } = require('./ocSchemas');
@@ -35,6 +36,7 @@ router.get('/aprovacao/admin/all', requireRole('admin'), validate(approvalAdminL
 router.get('/aprovacao/gestor/:id', requireRole('admin', 'gestor'), validate(approvalGestorListSchema), ocController.listApprovalForGestor);
 router.put('/:id/aprovar', requireRole('admin', 'gestor'), validate(approveOcSchema), ocController.approve);
 router.put('/:id/recontagem', requireRole('admin', 'gestor'), validate(recountOcSchema), ocController.sendToRecount);
+router.get('/historico/:id', requireRole('admin', 'gestor'), validate(historyDetailsSchema), ocController.getHistoryDetails);
 router.get('/:id/items', requireRole('admin', 'gestor', 'estoquista'), validate(listItemsSchema), ocController.listItems);
 router.post('/contar', requireRole('estoquista'), validate(saveCountSchema), ocController.saveCount);
 router.put('/:id/finalizar', requireRole('estoquista'), validate(finalizeOcSchema), ocController.finalize);
