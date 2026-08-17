@@ -93,6 +93,18 @@ async function assertActiveEmpresas(repository, empresaIds) {
   }
 }
 
+async function assertAssignableEmpresas(repository, empresaIds, currentUser) {
+  const currentIds = new Set(
+    (Array.isArray(currentUser?.empresas) ? currentUser.empresas : [])
+      .map((empresa) => Number(empresa?.id))
+  );
+  const newEmpresaIds = empresaIds.filter((empresaId) => !currentIds.has(empresaId));
+
+  if (newEmpresaIds.length > 0) {
+    await assertActiveEmpresas(repository, newEmpresaIds);
+  }
+}
+
 function createUserService({
   repository,
   audit = noopAudit,
@@ -242,7 +254,7 @@ function createUserService({
 
       const updatedUser = await repository.withTransaction(async (transactionRepository) => {
         if (empresaIds) {
-          await assertActiveEmpresas(transactionRepository, empresaIds);
+          await assertAssignableEmpresas(transactionRepository, empresaIds, currentUser);
         }
 
         const savedUser = await transactionRepository.update({

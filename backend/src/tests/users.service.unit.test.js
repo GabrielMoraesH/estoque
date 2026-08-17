@@ -730,6 +730,38 @@ describe('UserService unitario com repository mockado', () => {
     }));
   });
 
+  it('preserva vinculo inativo historico e valida somente novas atribuicoes', async () => {
+    const currentUser = {
+      id: 7, nome: 'Bia', login: 'bia', role: 'gestor',
+      empresas: [{ id: 1, nome: 'Historica', ativo: false }, { id: 2, nome: 'Ativa', ativo: true }]
+    };
+    const repository = createRepositoryMock({
+      findSummaryById: jest.fn().mockResolvedValueOnce(currentUser).mockResolvedValueOnce(currentUser),
+      findActiveEmpresaIds: jest.fn().mockResolvedValue([3]),
+      update: jest.fn().mockResolvedValue(currentUser),
+      replaceUserEmpresas: jest.fn().mockResolvedValue()
+    });
+    const { service } = createService({ repository });
+
+    await service.updateUser({ id: 7, nome: 'Bia Nova', login: 'bia', role: 'gestor', empresa_ids: [1, 2, 3] });
+
+    expect(repository.findActiveEmpresaIds).toHaveBeenCalledWith([3]);
+    expect(repository.replaceUserEmpresas).toHaveBeenCalledWith(7, [1, 2, 3]);
+  });
+
+  it('rejeita nova atribuicao de empresa inativa', async () => {
+    const currentUser = { id: 7, nome: 'Bia', login: 'bia', role: 'gestor', empresas: [{ id: 1, ativo: true }] };
+    const repository = createRepositoryMock({
+      findSummaryById: jest.fn().mockResolvedValue(currentUser),
+      findActiveEmpresaIds: jest.fn().mockResolvedValue([])
+    });
+    const { service } = createService({ repository });
+
+    await expect(service.updateUser({ id: 7, nome: 'Bia', login: 'bia', role: 'gestor', empresa_ids: [1, 9] }))
+      .rejects.toMatchObject({ statusCode: 400, message: 'Uma ou mais empresas informadas nao existem ou estao inativas' });
+    expect(repository.findActiveEmpresaIds).toHaveBeenCalledWith([9]);
+  });
+
   it('lista estoquistas ativos filtrando empresa e nivel quando informado', async () => {
     const repository = createRepositoryMock({
       listEstoquistas: jest.fn().mockResolvedValue([

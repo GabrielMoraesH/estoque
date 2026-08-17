@@ -32,6 +32,11 @@ function UserEditModal({
     () => (Array.isArray(safeEditingUser?.empresa_ids) ? safeEditingUser.empresa_ids : []),
     [safeEditingUser?.empresa_ids]
   );
+  const inactiveHistoricalEmpresas = useMemo(
+    () => (Array.isArray(safeUser?.empresas) ? safeUser.empresas : [])
+      .filter((empresa) => empresa?.ativo === false && selectedEmpresaIds.includes(Number(empresa.id))),
+    [safeUser?.empresas, selectedEmpresaIds]
+  );
   const isSaving = savingId === safeUser?.id;
   const hasPendingChanges = !areUserFormsEqual(safeEditingUser, getEditableUser(safeUser));
   const showLevelSelect = safeEditingUser?.role === "estoquista";
@@ -223,6 +228,12 @@ function UserEditModal({
                 })
               )}
             </div>
+            {inactiveHistoricalEmpresas.length > 0 && (
+              <p className="users-company-history-note">
+                Vinculos historicos inativos preservados: {inactiveHistoricalEmpresas.map((empresa) => empresa.nome).join(', ')}.
+                Essas empresas nao estao disponiveis para novas operacoes.
+              </p>
+            )}
           </fieldset>
         </div>
 

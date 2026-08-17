@@ -5,6 +5,7 @@ const API_URL = process.env.REACT_APP_API_URL;
 let authTokenProvider = () => null;
 let activeEmpresaIdProvider = () => null;
 let unauthorizedHandler = null;
+let invalidEmpresaHandler = null;
 
 export class ApiError extends Error {
   constructor(message, { status, data, path } = {}) {
@@ -16,10 +17,11 @@ export class ApiError extends Error {
   }
 }
 
-export function configureApiClient({ getToken, getActiveEmpresaId, onUnauthorized } = {}) {
+export function configureApiClient({ getToken, getActiveEmpresaId, onUnauthorized, onInvalidEmpresa } = {}) {
   authTokenProvider = typeof getToken === "function" ? getToken : () => null;
   activeEmpresaIdProvider = typeof getActiveEmpresaId === "function" ? getActiveEmpresaId : () => null;
   unauthorizedHandler = typeof onUnauthorized === "function" ? onUnauthorized : null;
+  invalidEmpresaHandler = typeof onInvalidEmpresa === "function" ? onInvalidEmpresa : null;
 }
 
 function getToken() {
@@ -157,6 +159,13 @@ export async function requestJson(
       handler?.(error, { token: requestToken });
     }
 
+    const responseMessage = data?.error?.message || data?.message || '';
+    const invalidEmpresa = (response.status === 404 && responseMessage === 'Empresa nao encontrada')
+      || (response.status === 403 && responseMessage === 'Usuario nao tem acesso a esta empresa');
+    if (authenticated && invalidEmpresa) {
+      invalidEmpresaHandler?.(error, { token: requestToken });
+    }
+
     throw error;
   }
 
@@ -275,6 +284,22 @@ export async function getEmpresas() {
   return requestJson("/empresas", {
     authenticated: true
   });
+}
+
+export async function getAdminEmpresas() {
+  return requestJson('/empresas/admin', { authenticated: true });
+}
+
+export async function createEmpresa(data) {
+  return requestJson('/empresas', { method: 'POST', body: data, authenticated: true });
+}
+
+export async function updateEmpresa(id, data) {
+  return requestJson(`/empresas/${id}`, { method: 'PUT', body: data, authenticated: true });
+}
+
+export async function updateEmpresaStatus(id, ativo) {
+  return requestJson(`/empresas/${id}/status`, { method: 'PATCH', body: { ativo }, authenticated: true });
 }
 
 export async function getAuditLogs(filters = {}) {

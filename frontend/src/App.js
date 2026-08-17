@@ -11,6 +11,7 @@ import ContarItem from "./pages/ContarItem";
 import GerarOC from "./pages/GerarOC";
 import Aprovacao from "./pages/Aprovacao";
 import Audit from "./pages/Audit";
+import Empresas from "./pages/Empresas";
 import ToastProvider from "./components/ToastProvider";
 import { AuthProvider } from "./contexts/AuthContext";
 import {
@@ -18,6 +19,7 @@ import {
   canCountOc,
   canCreateOc,
   canManageUsers,
+  canManageEmpresas,
   canViewAudit,
   canViewCountingItem,
   canViewGestorOcs,
@@ -44,6 +46,11 @@ function App() {
                   <Dashboard />
                 </PrivateRoute>
               }
+            />
+
+            <Route
+              path="/empresas"
+              element={<PrivateRoute canAccess={canManageEmpresas}><Empresas /></PrivateRoute>}
             />
 
             <Route

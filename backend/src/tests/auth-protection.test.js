@@ -501,6 +501,21 @@ describe('Protecao de rotas autenticadas', () => {
   });
 
   describe('POST /ocs/contar', () => {
+    it('bloqueia imediatamente empresa inativa antes do fluxo operacional', async () => {
+      jwt.verify.mockReturnValue({ id: 3, role: 'estoquista' });
+      db.query.mockResolvedValueOnce({ rows: [] });
+
+      const response = await request(app)
+        .post('/ocs/contar')
+        .set('Authorization', bearerToken('token-estoquista'))
+        .set('x-empresa-id', '1')
+        .send({ oc_id: 10, oc_localizacao_id: 20, quantidade: 1, lote: 'L1' });
+
+      expect(response.status).toBe(404);
+      expect(response.body.error.message).toBe('Empresa nao encontrada');
+      expect(ocService.saveOcCount).not.toHaveBeenCalled();
+    });
+
     it('bloqueia x-empresa-id antigo depois da remocao do vinculo', async () => {
       jwt.verify.mockReturnValue({ id: 3, role: 'estoquista' });
       db.query

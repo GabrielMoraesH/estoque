@@ -15,7 +15,8 @@ function createUserRepository(db = pool) {
         json_build_object(
           'id', empresas.id,
           'codigo', empresas.codigo,
-          'nome', empresas.nome
+          'nome', empresas.nome,
+          'ativo', empresas.ativo
         )
         ORDER BY empresas.nome ASC
       ) FILTER (WHERE empresas.id IS NOT NULL),
@@ -203,7 +204,8 @@ function createUserRepository(db = pool) {
                json_build_object(
                  'id', empresas.id,
                  'codigo', empresas.codigo,
-                 'nome', empresas.nome
+                 'nome', empresas.nome,
+                 'ativo', empresas.ativo
                )
                ORDER BY empresas.nome ASC
              ) FILTER (WHERE empresas.id IS NOT NULL),

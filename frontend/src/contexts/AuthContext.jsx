@@ -152,6 +152,17 @@ export function AuthProvider({ children }) {
     });
   }, []);
 
+  const revalidateSession = useCallback(async () => {
+    const token = currentTokenRef.current;
+    if (!token) return null;
+    const version = sessionVersionRef.current;
+    const response = await getCurrentUser();
+    if (version === sessionVersionRef.current && response?.user) {
+      saveSession({ token, user: response.user, activeEmpresa: readStoredActiveEmpresa() });
+    }
+    return response;
+  }, [saveSession]);
+
   const login = useCallback(async (credentials) => {
     const response = await loginUser(credentials);
 
@@ -195,9 +206,14 @@ export function AuthProvider({ children }) {
         if (requestContext?.token === currentTokenRef.current) {
           clearSession();
         }
+      },
+      onInvalidEmpresa: (_error, requestContext) => {
+        if (requestContext?.token === currentTokenRef.current) {
+          revalidateSession().catch(() => {});
+        }
       }
     });
-  }, [clearSession, session.activeEmpresa?.id, session.token]);
+  }, [clearSession, revalidateSession, session.activeEmpresa?.id, session.token]);
 
   useEffect(() => {
     let active = true;

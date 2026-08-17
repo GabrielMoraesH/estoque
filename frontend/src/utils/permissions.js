@@ -30,6 +30,10 @@ export function canManageUsers(user) {
   return isAdmin(user);
 }
 
+export function canManageEmpresas(user) {
+  return isAdmin(user);
+}
+
 export function canViewAudit(user) {
   return isAdmin(user);
 }

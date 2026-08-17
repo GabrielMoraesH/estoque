@@ -134,6 +134,14 @@
   line-height: 1.4;
 }
 
+.users-company-history-note {
+  margin: 10px 0 0;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
 .users-button,
 .users-save-button,
 .users-status-confirm,

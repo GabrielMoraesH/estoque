@@ -29,6 +29,7 @@ function Sidebar({ onClose }) {
   const menuItems = [
     { to: "/dashboard", label: "Dashboard", visible: true },
     { to: "/users", label: "Usuários", visible: canManageUsers },
+    { to: "/empresas", label: "Empresas", visible: canManageUsers },
     { to: "/auditoria", label: "Auditoria", visible: canManageUsers },
     { to: "/gerar-oc", label: "Gerar OC", visible: canCreateOc },
     { to: "/gestor", label: "Gestão de OCs", visible: canViewGestorOcs },
