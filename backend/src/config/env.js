@@ -44,6 +44,16 @@ function parsePositiveInteger(value, fallback, name) {
   return parsed;
 }
 
+function parseBodyLimit(value) {
+  const normalized = value?.trim() || '100kb';
+
+  if (!/^\d+(?:b|kb|mb)?$/i.test(normalized) || Number.parseInt(normalized, 10) <= 0) {
+    throw new Error(`Variavel de ambiente invalida para REQUEST_BODY_LIMIT: ${value}`);
+  }
+
+  return normalized;
+}
+
 function parseNodeEnv(value) {
   const normalized = value.trim();
   const allowedValues = ['development', 'production', 'test'];
@@ -55,6 +65,23 @@ function parseNodeEnv(value) {
   }
 
   return normalized;
+}
+
+function parseCorsOrigins(value) {
+  if (!value || !value.trim()) {
+    return [];
+  }
+
+  const origins = value
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  if (origins.some((origin) => !/^https?:\/\//i.test(origin))) {
+    throw new Error('Variavel de ambiente invalida para CORS_ORIGIN: informe URLs http(s) separadas por virgula');
+  }
+
+  return origins;
 }
 
 const env = {
@@ -73,7 +100,7 @@ const env = {
   },
   security: {
     bcryptSaltRounds: process.env.BCRYPT_SALT_ROUNDS?.trim() || '10',
-    requestBodyLimit: process.env.REQUEST_BODY_LIMIT?.trim() || '100kb',
+    requestBodyLimit: parseBodyLimit(process.env.REQUEST_BODY_LIMIT),
     rateLimitWindowMs: parsePositiveInteger(
       process.env.RATE_LIMIT_WINDOW_MS,
       15 * 60 * 1000,
@@ -89,7 +116,8 @@ const env = {
       process.env.LOGIN_RATE_LIMIT_MAX,
       10,
       'LOGIN_RATE_LIMIT_MAX'
-    )
+    ),
+    corsOrigins: parseCorsOrigins(process.env.CORS_ORIGIN)
   }
 };
 

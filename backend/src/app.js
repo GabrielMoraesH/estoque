@@ -12,7 +12,7 @@ const auditRoutes = require('./modules/audit/audit.routes');
 const errorHandler = require('./middlewares/errorHandler');
 const requestLogger = require('./middlewares/requestLogger');
 const { apiLimiter, loginLimiter } = require('./middlewares/rateLimiter');
-const { requestBodyLimit, helmetOptions, swaggerHelmetOptions } = require('./config/security');
+const { requestBodyLimit, helmetOptions, swaggerHelmetOptions, corsOrigins, nodeEnv } = require('./config/security');
 
 const app = express();
 const swaggerUiHandler = swaggerUi.setup(swaggerSpec);
@@ -33,7 +33,18 @@ app.get('/docs.json', (req, res) => {
 });
 
 app.use(helmet(helmetOptions));
-app.use(cors());
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin || corsOrigins.includes(origin) || (nodeEnv !== 'production' && corsOrigins.length === 0)) {
+      return callback(null, true);
+    }
+
+    const error = new Error('Origem nao permitida por CORS');
+    error.status = 403;
+    error.errorCode = 'AUTHORIZATION_ERROR';
+    return callback(error);
+  }
+}));
 app.use(express.json({ limit: requestBodyLimit }));
 app.use(express.urlencoded({ extended: false, limit: requestBodyLimit }));
 app.use(requestLogger);
@@ -50,6 +61,16 @@ app.use('/audit', auditRoutes);
 
 app.get('/', (req, res) => {
   res.send('API rodando normalmente');
+});
+
+app.use((req, res) => {
+  res.status(404).json({
+    error: {
+      message: 'Recurso nao encontrado',
+      code: 'NOT_FOUND',
+      status: 404
+    }
+  });
 });
 
 app.use(errorHandler);

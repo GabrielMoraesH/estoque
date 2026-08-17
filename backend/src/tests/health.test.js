@@ -20,4 +20,17 @@ describe('GET /health', () => {
     expect(response.body.status).toBe('ok');
     expect(pool.query).toHaveBeenCalledWith('SELECT 1');
   });
+
+  it('retorna JSON controlado para rota inexistente', async () => {
+    const response = await request(app).get('/rota-inexistente');
+
+    expect(response.status).toBe(404);
+    expect(response.body).toEqual({
+      error: {
+        message: 'Recurso nao encontrado',
+        code: 'NOT_FOUND',
+        status: 404
+      }
+    });
+  });
 });

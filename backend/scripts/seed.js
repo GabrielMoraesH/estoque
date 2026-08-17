@@ -2,6 +2,7 @@ const fs = require('fs/promises');
 const path = require('path');
 const bcrypt = require('bcrypt');
 const pool = require('../src/config/db');
+const env = require('../src/config/env');
 const { bcryptSaltRounds } = require('../src/config/security');
 const { EMPRESAS_FIXAS } = require('../src/modules/empresas/empresaConstants');
 
@@ -35,6 +36,20 @@ const seedUsers = [
     nivel_estoquista: 1
   }
 ];
+
+function getSeedPassword(user, nodeEnv, configuredPassword) {
+  const plainPassword = configuredPassword || (nodeEnv !== 'production' ? user.defaultPassword : null);
+
+  if (!plainPassword) {
+    throw new Error(`Variavel de ambiente obrigatoria ausente para seed em producao: ${user.passwordEnv}`);
+  }
+
+  if (nodeEnv === 'production' && plainPassword === user.defaultPassword) {
+    throw new Error(`Credencial padrao insegura nao permitida para seed em producao: ${user.passwordEnv}`);
+  }
+
+  return plainPassword;
+}
 
 async function runSqlSeeds(client) {
   const entries = await fs.readdir(seedsDir, { withFileTypes: true }).catch((err) => {
@@ -74,7 +89,8 @@ async function upsertSeedEmpresas(client) {
 
 async function upsertSeedUsers(client) {
   for (const user of seedUsers) {
-    const plainPassword = process.env[user.passwordEnv] || user.defaultPassword;
+    const plainPassword = getSeedPassword(user, env.nodeEnv, process.env[user.passwordEnv]);
+
     const hashedPassword = await bcrypt.hash(plainPassword, bcryptSaltRounds);
 
     await client.query(
@@ -126,7 +142,11 @@ async function seed() {
   }
 }
 
-seed().catch((err) => {
-  console.error('Erro ao executar seed:', err);
-  process.exitCode = 1;
-});
+if (require.main === module) {
+  seed().catch((err) => {
+    console.error('Erro ao executar seed:', err);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = { getSeedPassword, seedUsers };

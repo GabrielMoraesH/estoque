@@ -71,8 +71,10 @@ Variaveis principais:
 - `NODE_ENV`: ambiente de execucao.
 - `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`: conexao PostgreSQL.
 - `JWT_SECRET`: segredo de assinatura dos tokens.
+- `REQUEST_BODY_LIMIT`: tamanho maximo de payload JSON/form (padrao: `100kb`; aceite valores positivos em `b`, `kb` ou `mb`).
 - `RATE_LIMIT_WINDOW_MS` e `RATE_LIMIT_MAX`: limite geral.
 - `LOGIN_RATE_LIMIT_WINDOW_MS` e `LOGIN_RATE_LIMIT_MAX`: limite para login.
+- `CORS_ORIGIN`: origens de frontend permitidas, separadas por virgula. Em producao, deixe configurada quando o frontend estiver em outra origem; sem ela, requisicoes cross-origin sao negadas.
 
 ## Execucao
 
@@ -140,7 +142,7 @@ Usuarios criados pela seed:
 - `gestor` / `gestor123` com perfil `gestor`.
 - `estoquista` / `estoque123` com perfil `estoquista`.
 
-As senhas podem ser sobrescritas antes de rodar a seed com as variaveis opcionais `SEED_ADMIN_PASSWORD`, `SEED_GESTOR_PASSWORD` e `SEED_ESTOQUISTA_PASSWORD`.
+Em desenvolvimento, as senhas padrao acima podem ser sobrescritas com `SEED_ADMIN_PASSWORD`, `SEED_GESTOR_PASSWORD` e `SEED_ESTOQUISTA_PASSWORD`. Em producao, as tres variaveis sao obrigatorias: a seed recusa credenciais padrao conhecidas.
 
 As migrations executadas ficam registradas em `schema_migrations`. Rodar `npm run migrate` mais de uma vez nao recria tabelas nem reaplica arquivos ja registrados.
 

@@ -149,7 +149,7 @@ Principais pastas:
 - Variáveis de ambiente configuradas no backend.
 - Variável `REACT_APP_API_URL` configurada no frontend.
 
-Observação: este repositório não possui, no estado atual, scripts de migration ou seed versionados. Antes de executar o backend, confirme se o banco PostgreSQL possui as tabelas esperadas pela aplicação.
+O repositório possui migrations versionadas em `backend/migrations` e scripts para aplicá-las e executar a seed. Crie o banco antes de rodar `npm run migrate`.
 
 ## Como Executar Localmente
 
@@ -244,11 +244,17 @@ DB_USER=usuario
 DB_PASSWORD=sua_senha
 
 JWT_SECRET=troque_por_um_segredo
+JWT_EXPIRES_IN=1d
+BCRYPT_SALT_ROUNDS=10
+REQUEST_BODY_LIMIT=100kb
 
 RATE_LIMIT_WINDOW_MS=900000
 RATE_LIMIT_MAX=300
 LOGIN_RATE_LIMIT_WINDOW_MS=900000
 LOGIN_RATE_LIMIT_MAX=10
+
+# Em produção, libere explicitamente a origem do frontend, se ele estiver em outra origem.
+CORS_ORIGIN=http://localhost:3000
 ```
 
 Descrição:
@@ -257,8 +263,12 @@ Descrição:
 - `NODE_ENV`: ambiente da aplicação.
 - `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`: dados de conexão com o PostgreSQL.
 - `JWT_SECRET`: segredo usado para assinar e validar tokens JWT.
+- `JWT_EXPIRES_IN`: validade dos tokens JWT (padrão: `1d`).
+- `BCRYPT_SALT_ROUNDS`: custo do hash de senha (padrão: `10`).
+- `REQUEST_BODY_LIMIT`: tamanho máximo de payload JSON/form (padrão: `100kb`; aceita valores positivos em `b`, `kb` ou `mb`).
 - `RATE_LIMIT_WINDOW_MS` e `RATE_LIMIT_MAX`: janela e limite geral de requisições.
 - `LOGIN_RATE_LIMIT_WINDOW_MS` e `LOGIN_RATE_LIMIT_MAX`: janela e limite específico para login.
+- `CORS_ORIGIN`: lista separada por vírgulas de origens de frontend permitidas. Sem ela, o backend nega requisições cross-origin em produção.
 
 ### Frontend
 
@@ -274,6 +284,8 @@ Backend:
 
 - `npm run dev`: inicia o servidor com `nodemon`.
 - `npm start`: inicia o servidor com Node.js.
+- `npm run migrate`: aplica migrations pendentes.
+- `npm run seed`: executa a seed; em produção exige credenciais de seed explícitas e seguras.
 
 Frontend:
 

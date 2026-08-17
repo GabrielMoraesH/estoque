@@ -34,5 +34,7 @@ module.exports = {
   loginRateLimit: {
     windowMs: env.security.loginRateLimitWindowMs,
     max: env.security.loginRateLimitMax
-  }
+  },
+  corsOrigins: env.security.corsOrigins,
+  nodeEnv: env.nodeEnv
 };
