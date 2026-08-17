@@ -1,4 +1,4 @@
-import { configureApiClient, requestJson } from './api';
+import { configureApiClient, reassignOcAssignment, requestJson } from './api';
 
 function response(status, body) {
   return { ok: status >= 200 && status < 300, status, headers: { get: () => 'application/json' }, json: async () => body };
@@ -31,5 +31,16 @@ describe('revalidacao empresarial do cliente HTTP', () => {
     const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue(response(200, {}));
     await requestJson('/auth/me', { authenticated: true });
     expect(fetchMock.mock.calls[0][1].headers).not.toHaveProperty('x-empresa-id');
+  });
+
+  it('envia reatribuicao somente com o novo responsavel e a empresa ativa validada', async () => {
+    configureApiClient({ getToken: () => 'token', getActiveEmpresaId: () => 7 });
+    const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue(response(200, { changed: true }));
+    await reassignOcAssignment(10, 500, 33);
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/ocs/10/assignments/500/reassign'), expect.objectContaining({
+      method: 'PATCH',
+      body: JSON.stringify({ estoquista_id: 33 }),
+      headers: expect.objectContaining({ Authorization: 'Bearer token', 'x-empresa-id': '7' })
+    }));
   });
 });

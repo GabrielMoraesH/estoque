@@ -717,3 +717,12 @@
     min-height: 82px;
   }
 }
+.reassign-panel { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 20px; border: 1px solid #e5ebf3; border-radius: 12px; background: #fff; }
+.reassign-panel h2 { margin: 0 0 6px; font-size: 18px; }
+.reassign-panel p { margin: 0; color: #64748b; }
+.reassign-form { display: grid; min-width: min(100%, 360px); gap: 8px; }
+.reassign-form label { font-weight: 700; }
+.reassign-form select { min-height: 44px; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 8px; }
+.reassign-form select:focus-visible { outline: 3px solid rgba(34, 60, 121, .18); border-color: #223c79; }
+.reassign-actions { display: flex; justify-content: flex-end; gap: 8px; }
+@media (max-width: 768px) { .reassign-panel { align-items: stretch; flex-direction: column; } .reassign-form { min-width: 0; } .reassign-actions { flex-direction: column; } .reassign-actions button, .reassign-panel > button { width: 100%; min-height: 44px; } }

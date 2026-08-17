@@ -1129,6 +1129,21 @@ function createOcRepository(db = pool) {
       return result.rows[0] || null;
     },
 
+    async reassignActiveAssignment({ assignmentId, ocId, previousEstoquistaId, novoEstoquistaId }) {
+      const result = await db.query(
+        `UPDATE oc_assignments
+         SET estoquista_id = $4
+         WHERE id = $1
+           AND oc_id = $2
+           AND estoquista_id = $3
+           AND status = 'ativo'
+         RETURNING *`,
+        [assignmentId, ocId, previousEstoquistaId, novoEstoquistaId]
+      );
+
+      return result.rows[0] || null;
+    },
+
     async findOcProdutosByIdsForUpdate({ ocId, ocProdutoIds }) {
       const result = await db.query(
         `SELECT *

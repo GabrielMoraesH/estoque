@@ -393,3 +393,11 @@ export async function sendItemsToRecount(id, itemIds, novoEstoquistaId) {
     authenticated: true
   });
 }
+
+export async function reassignOcAssignment(ocId, assignmentId, estoquistaId) {
+  return requestJson(`/ocs/${ocId}/assignments/${assignmentId}/reassign`, {
+    method: "PATCH",
+    body: { estoquista_id: estoquistaId },
+    authenticated: true
+  });
+}

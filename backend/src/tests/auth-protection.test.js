@@ -62,6 +62,7 @@ jest.mock('../modules/ocs/ocService', () => ({
   listApprovalForGestor: jest.fn(),
   approveOc: jest.fn(),
   sendOcToRecount: jest.fn(),
+  reassignAssignment: jest.fn(),
   listOcItems: jest.fn(),
   getOcHistoryDetails: jest.fn(),
   saveOcCount: jest.fn(),
@@ -442,6 +443,41 @@ describe('Protecao de rotas autenticadas', () => {
         ocId: 10,
         user: expect.objectContaining({ id, role })
       }));
+    });
+  });
+
+  describe('PATCH /ocs/:ocId/assignments/:assignmentId/reassign', () => {
+    const path = '/ocs/10/assignments/500/reassign';
+
+    it('retorna 401 sem autenticacao', async () => {
+      const response = await request(app).patch(path).set('x-empresa-id', '1').send({ estoquista_id: 33 });
+      expect(response.status).toBe(401);
+      expect(ocService.reassignAssignment).not.toHaveBeenCalled();
+    });
+
+    it('retorna 403 para estoquista', async () => {
+      jwt.verify.mockReturnValue({ id: 3, role: 'estoquista' });
+      mockActiveEmpresaAccess();
+      const response = await request(app).patch(path).set('Authorization', bearerToken('token-estoquista')).set('x-empresa-id', '1').send({ estoquista_id: 33 });
+      expect(response.status).toBe(403);
+      expect(ocService.reassignAssignment).not.toHaveBeenCalled();
+    });
+
+    it.each([[1, 'admin'], [2, 'gestor']])('permite %s e usa somente empresa validada', async (id, role) => {
+      jwt.verify.mockReturnValue({ id, role });
+      mockActiveEmpresaAccess();
+      ocService.reassignAssignment.mockResolvedValue({ changed: true });
+      const response = await request(app).patch(path).set('Authorization', bearerToken(`token-${role}`)).set('x-empresa-id', '1').send({ estoquista_id: 33 });
+      expect(response.status).toBe(200);
+      expect(ocService.reassignAssignment).toHaveBeenCalledWith(expect.objectContaining({ empresaId: 1, ocId: 10, assignmentId: 500, novoEstoquistaId: 33, user: expect.objectContaining({ id, role }) }));
+    });
+
+    it('rejeita campos de autoridade enviados pelo body', async () => {
+      jwt.verify.mockReturnValue({ id: 1, role: 'admin' });
+      mockActiveEmpresaAccess();
+      const response = await request(app).patch(path).set('Authorization', bearerToken('token-admin')).set('x-empresa-id', '1').send({ estoquista_id: 33, empresa_id: 2, status: 'finalizado' });
+      expect(response.status).toBe(400);
+      expect(ocService.reassignAssignment).not.toHaveBeenCalled();
     });
   });
 

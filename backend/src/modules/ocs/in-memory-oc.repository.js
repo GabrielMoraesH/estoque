@@ -941,6 +941,18 @@ function createInMemoryOcRepository({
         );
       },
 
+      async reassignActiveAssignment({ assignmentId, ocId, previousEstoquistaId, novoEstoquistaId }) {
+        const assignment = currentState.ocAssignments.find((item) =>
+          Number(item.id) === Number(assignmentId)
+          && Number(item.oc_id) === Number(ocId)
+          && Number(item.estoquista_id) === Number(previousEstoquistaId)
+          && item.status === 'ativo'
+        );
+        if (!assignment) return null;
+        assignment.estoquista_id = Number(novoEstoquistaId);
+        return clone(assignment);
+      },
+
       async findOcProdutosByIdsForUpdate({ ocId, ocProdutoIds }) {
         const ids = (ocProdutoIds || []).map(Number);
         return clone(

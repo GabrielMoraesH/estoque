@@ -10,6 +10,7 @@ import {
   getOcHistoryDetails,
   getOCsForApproval,
   salvarContagem,
+  reassignOcAssignment,
   sendItemsToRecount
 } from "../services/api";
 import useEmpresa from "./useEmpresa";
@@ -65,6 +66,10 @@ export function useOCs() {
     },
     [activeEmpresaId]
   );
+  const reassignAssignment = useCallback((ocId, assignmentId, estoquistaId) => {
+    void activeEmpresaId;
+    return reassignOcAssignment(ocId, assignmentId, estoquistaId);
+  }, [activeEmpresaId]);
 
   return {
     createOcWithProducts,
@@ -77,7 +82,8 @@ export function useOCs() {
     saveItemCount,
     finalizeOc,
     approveOc,
-    sendOcItemsToRecount
+    sendOcItemsToRecount,
+    reassignAssignment
   };
 }
 

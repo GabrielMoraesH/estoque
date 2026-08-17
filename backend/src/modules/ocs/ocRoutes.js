@@ -18,7 +18,8 @@ const {
   historyDetailsSchema,
   saveCountSchema,
   finalizeOcSchema,
-  exportOcSchema
+  exportOcSchema,
+  reassignAssignmentSchema
 } = require('./ocSchemas');
 
 const router = express.Router();
@@ -38,6 +39,7 @@ router.get('/aprovacao/admin/all', requireRole('admin'), validate(approvalAdminL
 router.get('/aprovacao/gestor/:id', requireRole('admin', 'gestor'), validate(approvalGestorListSchema), ocController.listApprovalForGestor);
 router.put('/:id/aprovar', requireRole('admin', 'gestor'), validate(approveOcSchema), ocController.approve);
 router.put('/:id/recontagem', requireRole('admin', 'gestor'), validate(recountOcSchema), ocController.sendToRecount);
+router.patch('/:ocId/assignments/:assignmentId/reassign', requireRole('admin', 'gestor'), validate(reassignAssignmentSchema), ocController.reassignAssignment);
 router.get('/historico/:id', requireRole('admin', 'gestor'), validate(historyDetailsSchema), ocController.getHistoryDetails);
 router.get('/:id/items', requireRole('admin', 'gestor', 'estoquista'), validate(listItemsSchema), ocController.listItems);
 router.post('/contar', requireRole('estoquista'), validate(saveCountSchema), ocController.saveCount);

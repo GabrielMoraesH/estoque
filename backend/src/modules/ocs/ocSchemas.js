@@ -21,6 +21,15 @@ const recountBodySchema = z.object({
   novo_estoquista_id: z.coerce.number().int().positive()
 });
 
+const reassignParamsSchema = z.object({
+  ocId: z.coerce.number().int().positive(),
+  assignmentId: z.coerce.number().int().positive()
+});
+
+const reassignBodySchema = z.object({
+  estoquista_id: z.coerce.number().int().positive()
+}).strict();
+
 const countQuantitySchema = z.preprocess((value) => {
   if (typeof value !== 'string') {
     return value;
@@ -94,6 +103,11 @@ module.exports = {
   recountOcSchema: {
     body: recountBodySchema,
     params: idParamSchema,
+    query: emptyObjectSchema
+  },
+  reassignAssignmentSchema: {
+    body: reassignBodySchema,
+    params: reassignParamsSchema,
     query: emptyObjectSchema
   },
   listItemsSchema: {

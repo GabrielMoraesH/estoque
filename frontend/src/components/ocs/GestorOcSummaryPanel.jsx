@@ -3,7 +3,7 @@ import { formatDateTime, formatResponsibleName } from "../../utils/formatters";
 import { formatSummaryDifference, getOperationalOcStatusLabel } from "../../utils/ocData";
 import OcEmpresaBadge from "./OcEmpresaBadge";
 
-function GestorOcSummaryPanel({ oc, summary }) {
+function GestorOcSummaryPanel({ oc, summary, assignmentAction }) {
   const safeSummary = summary || {};
 
   return (
@@ -73,6 +73,7 @@ function GestorOcSummaryPanel({ oc, summary }) {
           </div>
         </div>
       </Panel>
+      {assignmentAction}
     </>
   );
 }

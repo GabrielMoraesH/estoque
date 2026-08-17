@@ -116,6 +116,18 @@ function createOcController({ service = ocService } = {}) {
       res.json(result);
     }),
 
+    reassignAssignment: asyncHandler(async (req, res) => {
+      const result = await service.reassignAssignment({
+        user: req.user,
+        empresaId: req.empresaId,
+        ocId: req.params.ocId,
+        assignmentId: req.params.assignmentId,
+        novoEstoquistaId: req.body.estoquista_id,
+        auditContext: getRequestContext(req)
+      });
+      res.json(result);
+    }),
+
     listItems: asyncHandler(async (req, res) => {
       const result = await service.listOcItems({
         user: req.user,

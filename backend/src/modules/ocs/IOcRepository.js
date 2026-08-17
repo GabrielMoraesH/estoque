@@ -35,6 +35,7 @@ const OC_REPOSITORY_METHODS = [
   'findActiveFirstCountAssignment',
   'findFirstCountAssignment',
   'findActiveAssignmentByOc',
+  'reassignActiveAssignment',
   'findOcProdutosByIdsForUpdate',
   'getNextAssignmentCycle',
   'hasActiveAssignment',

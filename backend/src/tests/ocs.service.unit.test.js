@@ -41,6 +41,7 @@ function createRepositoryMock(overrides = {}) {
     findActiveFirstCountAssignment: jest.fn(),
     findFirstCountAssignment: jest.fn(),
     findActiveAssignmentByOc: jest.fn(),
+    reassignActiveAssignment: jest.fn(),
     findOcProdutosByIdsForUpdate: jest.fn(),
     getNextAssignmentCycle: jest.fn(),
     hasActiveAssignment: jest.fn(),
@@ -2973,6 +2974,139 @@ describe('OcService unitario com repository mockado', () => {
     expect(byId[11].localizacoes[0].contagens.map((count) => count.lote)).toEqual(['B1', 'B2', 'B3', 'ATIVO']);
     expect(byId[14]).toMatchObject({ saldo_contado_vigente: 14, diferenca: 0 });
     expect(byId[14].localizacoes).toHaveLength(2);
+  });
+
+  it('reatribui assignment ativo preservando ciclo, progresso, produtos e autoria', async () => {
+    const repository = createInMemoryOcRepository({
+      users: [
+        { id: 1, nome: 'Admin', role: 'admin', ativo: true, empresas: [{ id: 1 }] },
+        { id: 22, nome: 'Joao', role: 'estoquista', ativo: true, nivel_estoquista: 2, empresas: [{ id: 1 }] },
+        { id: 33, nome: 'Maria', role: 'estoquista', ativo: true, nivel_estoquista: 2, empresas: [{ id: 1 }] }
+      ],
+      ocs: [{ id: 10, gestor_id: 1, estoquista_id: 22, empresa_id: 1, status: OC_STATUS.OPEN }],
+      ocProdutos: [{ id: 100, oc_id: 10, descricao_snapshot: 'Produto' }],
+      ocLocalizacoes: [1, 2, 3, 4, 5].map((offset) => ({ id: 1000 + offset, oc_produto_id: 100, endereco_snapshot: `A${offset}`, status: ITEM_STATUS.PENDING })),
+      ocAssignments: [{ id: 500, oc_id: 10, ciclo: 3, fase: 'recontagem', estoquista_id: 22, status: 'ativo' }],
+      ocAssignmentProdutos: [{ assignment_id: 500, oc_id: 10, oc_produto_id: 100 }],
+      counts: [
+        { id: 1, oc_id: 10, assignment_id: 500, oc_produto_id: 100, oc_localizacao_id: 1001, user_id: 22, quantidade: 1, lote: 'J1' },
+        { id: 2, oc_id: 10, assignment_id: 500, oc_produto_id: 100, oc_localizacao_id: 1002, user_id: 22, quantidade: 2, lote: 'J2' }
+      ]
+    });
+    const audit = { logAction: jest.fn().mockResolvedValue(undefined) };
+    const service = createOcService({ repository, audit });
+    const reassigned = await service.reassignAssignment({ user: { id: 1, role: 'admin' }, empresaId: 1, ocId: 10, assignmentId: 500, novoEstoquistaId: 33 });
+
+    expect(reassigned).toMatchObject({ changed: true, progresso: { counted: 2, total: 5 } });
+    expect(repository.__getState().ocAssignments[0]).toMatchObject({ id: 500, ciclo: 3, estoquista_id: 33 });
+    expect(repository.__getState().counts.map((count) => count.user_id)).toEqual([22, 22]);
+    expect(await service.listMyEstoquistaOcs({ user: { id: 22, role: 'estoquista' }, empresaId: 1 })).toHaveLength(0);
+    expect((await service.listMyEstoquistaOcs({ user: { id: 33, role: 'estoquista' }, empresaId: 1 }))[0]).toMatchObject({ estoquista_nome: 'Maria', qtd_contados: 2, qtd: 5 });
+
+    await service.saveOcCount({ user: { id: 33, role: 'estoquista' }, empresaId: 1, payload: { oc_id: 10, oc_localizacao_id: 1003, quantidade: 3, lote: 'M3' } });
+    expect(repository.__getState().counts.map((count) => count.user_id)).toEqual([22, 22, 33]);
+    expect(audit.logAction).toHaveBeenCalledTimes(1);
+    expect(audit.logAction).toHaveBeenCalledWith(expect.objectContaining({ action: 'oc.assignment_reassigned', metadata: expect.objectContaining({ progresso: '2/5' }) }));
+
+    await expect(service.reassignAssignment({ user: { id: 1, role: 'admin' }, empresaId: 1, ocId: 10, assignmentId: 500, novoEstoquistaId: 33 })).resolves.toMatchObject({ changed: false });
+    expect(audit.logAction).toHaveBeenCalledTimes(1);
+  });
+
+  it('recupera contagem inicial 3/8 de responsavel desativado e finaliza 8/8 com o novo autor', async () => {
+    const locations = Array.from({ length: 8 }, (_, index) => ({ id: 2001 + index, oc_produto_id: 200, endereco_snapshot: `L${index + 1}`, status: ITEM_STATUS.PENDING }));
+    const repository = createInMemoryOcRepository({
+      users: [
+        { id: 1, nome: 'Admin', role: 'admin', ativo: true, empresas: [{ id: 1 }] },
+        { id: 22, nome: 'Joao', role: 'estoquista', ativo: false, nivel_estoquista: 1, empresas: [] },
+        { id: 33, nome: 'Maria', role: 'estoquista', ativo: true, nivel_estoquista: 1, empresas: [{ id: 1 }] }
+      ],
+      ocs: [{ id: 20, gestor_id: 1, estoquista_id: 22, empresa_id: 1, status: OC_STATUS.OPEN }],
+      ocProdutos: [{ id: 200, oc_id: 20, descricao_snapshot: 'Produto' }],
+      ocLocalizacoes: locations,
+      ocAssignments: [{ id: 600, oc_id: 20, ciclo: 1, fase: 'contagem', estoquista_id: 22, status: 'ativo' }],
+      ocAssignmentProdutos: [{ assignment_id: 600, oc_id: 20, oc_produto_id: 200 }],
+      counts: locations.slice(0, 3).map((location, index) => ({ id: index + 1, oc_id: 20, assignment_id: 600, oc_produto_id: 200, oc_localizacao_id: location.id, user_id: 22, quantidade: index + 1, lote: `J${index + 1}` }))
+    });
+    const audit = { logAction: jest.fn().mockResolvedValue(undefined) };
+    const service = createOcService({ repository, audit });
+
+    await expect(service.reassignAssignment({ user: { id: 1, role: 'admin' }, empresaId: 1, ocId: 20, assignmentId: 600, novoEstoquistaId: 33 }))
+      .resolves.toMatchObject({ changed: true, progresso: { counted: 3, total: 8 }, assignment: { id: 600, ciclo: 1, fase: 'contagem', status: 'ativo' } });
+
+    for (const [index, location] of locations.slice(3).entries()) {
+      await service.saveOcCount({ user: { id: 33, role: 'estoquista' }, empresaId: 1, payload: { oc_id: 20, oc_localizacao_id: location.id, quantidade: index + 4, lote: `M${index + 4}` } });
+    }
+    const state = repository.__getState();
+    expect(state.counts).toHaveLength(8);
+    expect(state.counts.slice(0, 3).every((count) => count.user_id === 22)).toBe(true);
+    expect(state.counts.slice(3).every((count) => count.user_id === 33)).toBe(true);
+    await expect(service.finalizeOc({ user: { id: 33, role: 'estoquista' }, empresaId: 1, ocId: 20 })).resolves.toMatchObject({ message: 'OC enviada para aprovacao' });
+    expect(repository.__getState().ocAssignments[0]).toMatchObject({ id: 600, ciclo: 1, status: 'finalizado', estoquista_id: 33 });
+  });
+
+  it('nao consulta elegibilidade nem restaura vinculo do responsavel anterior', async () => {
+    const repository = createRepositoryMock({
+      findOcById: jest.fn().mockResolvedValue({ id: 10, empresa_id: 1 }),
+      findUserById: jest.fn(async (id) => id === 1
+        ? { id: 1, role: 'gestor', ativo: true }
+        : { id: 33, role: 'estoquista', ativo: true, nivel_estoquista: 1 }),
+      userHasEmpresaAccess: jest.fn(async (id) => id !== 22),
+      findActiveAssignmentByOc: jest.fn().mockResolvedValue({ id: 500, oc_id: 10, ciclo: 1, fase: 'contagem', status: 'ativo', estoquista_id: 22 }),
+      listOperationalProducts: jest.fn().mockResolvedValue([{ total_localizacoes: 8, localizacoes_contadas: 3 }]),
+      reassignActiveAssignment: jest.fn().mockResolvedValue({ id: 500, oc_id: 10, ciclo: 1, fase: 'contagem', status: 'ativo', estoquista_id: 33 })
+    });
+    const { service } = createService({ repository });
+    await expect(service.reassignAssignment({ user: { id: 1, role: 'gestor' }, empresaId: 1, ocId: 10, assignmentId: 500, novoEstoquistaId: 33 })).resolves.toMatchObject({ changed: true });
+    expect(repository.findUserById).not.toHaveBeenCalledWith(22);
+    expect(repository.userHasEmpresaAccess).not.toHaveBeenCalledWith(22, 1);
+  });
+
+  it.each([
+    ['usuario inexistente', null, true, 404],
+    ['admin como responsavel', { id: 33, role: 'admin', ativo: true }, true, 400],
+    ['estoquista inativo', { id: 33, role: 'estoquista', ativo: false, nivel_estoquista: 1 }, true, 400],
+    ['nivel incorreto', { id: 33, role: 'estoquista', ativo: true, nivel_estoquista: 2 }, true, 400],
+    ['sem vinculo', { id: 33, role: 'estoquista', ativo: true, nivel_estoquista: 1 }, false, 403]
+  ])('rejeita novo responsavel invalido: %s', async (_label, candidate, candidateAccess, statusCode) => {
+    const repository = createRepositoryMock({
+      findOcById: jest.fn().mockResolvedValue({ id: 10, empresa_id: 1 }),
+      findUserById: jest.fn(async (id) => id === 1 ? { id: 1, role: 'admin', ativo: true } : candidate),
+      userHasEmpresaAccess: jest.fn(async (id) => id === 1 || candidateAccess),
+      findActiveAssignmentByOc: jest.fn().mockResolvedValue({ id: 500, oc_id: 10, ciclo: 1, fase: 'contagem', status: 'ativo', estoquista_id: 22 })
+    });
+    const { service, audit } = createService({ repository });
+    await expect(service.reassignAssignment({ user: { id: 1, role: 'admin' }, empresaId: 1, ocId: 10, assignmentId: 500, novoEstoquistaId: 33 })).rejects.toMatchObject({ statusCode });
+    expect(repository.reassignActiveAssignment).not.toHaveBeenCalled();
+    expect(audit.logAction).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['assignment finalizado ou inexistente', { id: 10, empresa_id: 1 }, null, 500],
+    ['assignment de outra OC', { id: 10, empresa_id: 1 }, { id: 501, oc_id: 10, status: 'ativo' }, 500],
+    ['OC de outra empresa', { id: 10, empresa_id: 2 }, null, 500]
+  ])('rejeita alvo invalido: %s', async (_label, oc, assignment, assignmentId) => {
+    const repository = createRepositoryMock({ findOcById: jest.fn().mockResolvedValue(oc), findActiveAssignmentByOc: jest.fn().mockResolvedValue(assignment) });
+    const { service } = createService({ repository });
+    await expect(service.reassignAssignment({ user: { id: 1, role: 'admin' }, empresaId: 1, ocId: 10, assignmentId, novoEstoquistaId: 33 })).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it('detecta conflito concorrente e nao audita; falha da auditoria nao desfaz sucesso', async () => {
+    const base = {
+      findOcById: jest.fn().mockResolvedValue({ id: 10, empresa_id: 1 }),
+      findUserById: jest.fn(async (id) => id === 1 ? { id: 1, role: 'admin', ativo: true } : { id: 33, role: 'estoquista', ativo: true, nivel_estoquista: 1 }),
+      userHasEmpresaAccess: jest.fn().mockResolvedValue(true),
+      findActiveAssignmentByOc: jest.fn().mockResolvedValue({ id: 500, oc_id: 10, ciclo: 1, fase: 'contagem', status: 'ativo', estoquista_id: 22 }),
+      listOperationalProducts: jest.fn().mockResolvedValue([{ total_localizacoes: 8, localizacoes_contadas: 3 }])
+    };
+    const conflictRepository = createRepositoryMock({ ...base, reassignActiveAssignment: jest.fn().mockResolvedValue(null) });
+    const conflictAudit = { logAction: jest.fn() };
+    await expect(createOcService({ repository: conflictRepository, audit: conflictAudit }).reassignAssignment({ user: { id: 1, role: 'admin' }, empresaId: 1, ocId: 10, assignmentId: 500, novoEstoquistaId: 33 })).rejects.toMatchObject({ statusCode: 409 });
+    expect(conflictAudit.logAction).not.toHaveBeenCalled();
+
+    const successRepository = createRepositoryMock({ ...base, reassignActiveAssignment: jest.fn().mockResolvedValue({ id: 500, oc_id: 10, ciclo: 1, fase: 'contagem', status: 'ativo', estoquista_id: 33 }) });
+    const failingAudit = { logAction: jest.fn().mockRejectedValue(new Error('audit unavailable')) };
+    await expect(createOcService({ repository: successRepository, audit: failingAudit }).reassignAssignment({ user: { id: 1, role: 'admin' }, empresaId: 1, ocId: 10, assignmentId: 500, novoEstoquistaId: 33 })).resolves.toMatchObject({ changed: true });
+    expect(failingAudit.logAction).toHaveBeenCalledTimes(1);
   });
 });
 
