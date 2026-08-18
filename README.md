@@ -294,6 +294,10 @@ Frontend:
 - `npm test`: inicia o runner de testes do Create React App.
 - `npm run eject`: ejeta a configuração do Create React App.
 
+## CI
+
+O GitHub Actions executa o workflow de CI a cada `push` e `pull request`. Ele instala as dependências a partir dos lockfiles, executa os testes do backend, executa os testes do frontend sem modo watch e gera o build de produção do frontend. O workflow não executa migrations, seed, banco de dados, deploy ou auditoria de dependências.
+
 ## Endpoints Principais do Backend
 
 Base local sugerida:
