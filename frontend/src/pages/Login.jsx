@@ -53,64 +53,36 @@ function Login() {
           alt="Dimebras"
         />
 
-        <div className="desktop-only">
-          <form className="login-form" onSubmit={handleSubmit}>
-            <input
-              className="login-input"
-              placeholder="Usuário"
-              value={login}
-              onChange={(e) => setLogin(e.target.value)}
-              disabled={submitting}
-            />
+        <form className="login-form" onSubmit={handleSubmit}>
+          <input
+            id="login-user"
+            className="login-input"
+            name="username"
+            autoComplete="username"
+            aria-label="Usuário"
+            placeholder="Usuário"
+            value={login}
+            onChange={(e) => setLogin(e.target.value)}
+            disabled={submitting}
+          />
 
-            <input
-              className="login-input"
-              type="password"
-              placeholder="Senha"
-              value={senha}
-              onChange={(e) => setSenha(e.target.value)}
-              disabled={submitting}
-            />
+          <input
+            id="login-password"
+            className="login-input"
+            name="password"
+            type="password"
+            autoComplete="current-password"
+            aria-label="Senha"
+            placeholder="Senha"
+            value={senha}
+            onChange={(e) => setSenha(e.target.value)}
+            disabled={submitting}
+          />
 
-            <button className="login-button" type="submit" disabled={isSubmitDisabled}>
-              {submitting ? "Acessando..." : "Acessar sistema"}
-            </button>
-          </form>
-        </div>
-
-        <div className="mobile-only">
-          <div className="login-copy">
-          </div>
-
-          <form className="login-form" onSubmit={handleSubmit}>
-            <div className="login-field">
-              <input
-                id="login-user"
-                className="login-input"
-                placeholder="Usuário"
-                value={login}
-                onChange={(e) => setLogin(e.target.value)}
-                disabled={submitting}
-              />
-            </div>
-
-            <div className="login-field">
-              <input
-                id="login-password"
-                className="login-input"
-                type="password"
-                placeholder="Senha"
-                value={senha}
-                onChange={(e) => setSenha(e.target.value)}
-                disabled={submitting}
-              />
-            </div>
-
-            <button className="login-button" type="submit" disabled={isSubmitDisabled}>
-              {submitting ? "Acessando..." : "Acessar sistema"}
-            </button>
-          </form>
-        </div>
+          <button className="login-button" type="submit" disabled={isSubmitDisabled}>
+            {submitting ? "Acessando..." : "Acessar sistema"}
+          </button>
+        </form>
       </div>
     </div>
   );
