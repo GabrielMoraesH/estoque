@@ -21,7 +21,7 @@ function GestorOcCard({ oc, onOpenOc }) {
   const statusVariant = getStatusPillVariant(status);
 
   return (
-    <div className="oc-card gestor-oc-card">
+    <article className="oc-card gestor-oc-card" aria-label={`OC ${formatOcCode(safeOc.id)}`}>
       <div className="oc-info gestor-oc-info">
         <StatusPill variant={statusVariant}>{getOperationalOcStatusLabel(safeOc)}</StatusPill>
         <OcEmpresaBadge oc={safeOc} />
@@ -66,7 +66,7 @@ function GestorOcCard({ oc, onOpenOc }) {
           Abrir detalhes
         </Button>
       </div>
-    </div>
+    </article>
   );
 }
 

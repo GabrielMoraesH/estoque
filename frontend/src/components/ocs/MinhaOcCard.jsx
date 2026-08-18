@@ -16,7 +16,7 @@ function MinhaOcCard({ oc, responsibleName, canFinalizeOc, finalizingId, onOpenO
   }, [oc, onFinalizeOc]);
 
   return (
-    <div className="oc-card">
+    <article className="oc-card" aria-label={`OC ${formatOcCode(oc?.id)}`}>
       <div className="oc-info">
         <span className="status-badge">{readyToFinalize ? "PRONTA PARA FINALIZAR" : "EM ANDAMENTO"}</span>
         <OcEmpresaBadge oc={oc} />
@@ -35,7 +35,7 @@ function MinhaOcCard({ oc, responsibleName, canFinalizeOc, finalizingId, onOpenO
           </button>
         )}
       </div>
-    </div>
+    </article>
   );
 }
 

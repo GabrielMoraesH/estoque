@@ -35,7 +35,7 @@ const ApprovalOcCard = memo(function ApprovalOcCard({
   }, [oc?.id, onApprove]);
 
   return (
-    <div className="oc-card">
+    <article className="oc-card" aria-label={`OC ${formatOcCode(oc?.id)} aguardando aprovação`}>
       <div className="oc-info">
         <StatusPill variant="warning">
           {getOcStatusLabel("aguardando_aprovacao", { uppercase: true })}
@@ -69,7 +69,7 @@ const ApprovalOcCard = memo(function ApprovalOcCard({
           </Button>
         )}
       </div>
-    </div>
+    </article>
   );
 });
 

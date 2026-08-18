@@ -129,7 +129,7 @@ jobs:
         run: npm run test:postgres
 
   e2e:
-    name: Playwright E2E authentication
+    name: Playwright E2E
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -181,7 +181,7 @@ jobs:
       - name: Prepare E2E fixture
         working-directory: backend
         run: npm run seed:e2e
-      - name: Run Playwright authentication E2E
+      - name: Run Playwright E2E
         working-directory: frontend
         run: npm run test:e2e
       - name: Upload Playwright artifacts on failure
