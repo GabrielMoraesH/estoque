@@ -73,8 +73,8 @@ test('cria, conta, finaliza e aprova uma OC', async ({ page }) => {
   const details = page.getByRole('region', { name: `Detalhes da OC ${ocCode}` });
   await expect(details).toBeVisible();
   await expect(details.getByText('Empresa E2E Test Only')).toBeVisible();
-  await expect(details.getByText('Estoquista E2E Test Only')).toBeVisible();
-  await expect(details.getByText('Dipirona 500mg')).toBeVisible();
+  await expect(details.getByText('Responsável operacional: Estoquista E2E Test Only', { exact: true })).toBeVisible();
+  await expect(details.getByRole('table').getByRole('cell', { name: /Dipirona 500mg/ })).toBeVisible();
   await approvalCard.getByRole('button', { name: 'Aprovar' }).click();
   const approveDialog = page.getByRole('dialog', { name: 'Aprovar OC' });
   await approveDialog.getByRole('button', { name: 'Aprovar' }).click();
