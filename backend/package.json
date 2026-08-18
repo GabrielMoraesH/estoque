@@ -9,7 +9,8 @@
     "migrate": "node scripts/migrate.js",
     "seed": "node scripts/seed.js",
     "db:setup": "npm run migrate && npm run seed",
-    "test": "jest --runInBand"
+    "test": "jest --testPathIgnorePatterns=postgres.integration.test.js",
+    "test:postgres": "jest --runInBand src/tests/postgres.integration.test.js"
   },
   "keywords": [],
   "author": "",
