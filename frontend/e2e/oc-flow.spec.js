@@ -74,7 +74,10 @@ test('cria, conta, finaliza e aprova uma OC', async ({ page }) => {
   await expect(details).toBeVisible();
   await expect(details.getByText('Empresa E2E Test Only')).toBeVisible();
   await expect(details.getByText('Responsável operacional: Estoquista E2E Test Only', { exact: true })).toBeVisible();
-  await expect(details.getByRole('table').getByRole('cell', { name: /Dipirona 500mg/ })).toBeVisible();
+  await expect(details.getByRole('table').getByRole('cell', {
+    name: 'Código 789123 Dipirona 500mg',
+    exact: true
+  })).toBeVisible();
   await approvalCard.getByRole('button', { name: 'Aprovar' }).click();
   const approveDialog = page.getByRole('dialog', { name: 'Aprovar OC' });
   await approveDialog.getByRole('button', { name: 'Aprovar' }).click();
