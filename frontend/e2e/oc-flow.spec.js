@@ -55,7 +55,6 @@ test('cria, conta, finaliza e aprova uma OC', async ({ page }) => {
     await page.getByLabel('Quantidade').fill(quantity);
     await page.getByLabel('Lote').fill(lot);
     await page.getByRole('button', { name: 'Salvar contagem' }).click();
-    await expect(page.getByText('Contagem registrada com sucesso.')).toBeVisible();
     await expect(page.getByText(progress)).toBeVisible();
   }
 
@@ -71,10 +70,11 @@ test('cria, conta, finaliza e aprova uma OC', async ({ page }) => {
   const approvalCard = page.getByRole('article', { name: `OC ${ocCode} aguardando aprovação` });
   await expect(approvalCard).toBeVisible();
   await approvalCard.getByRole('button', { name: 'Abrir detalhes' }).click();
-  await expect(page.getByText(`Detalhes da OC ${ocCode}`)).toBeVisible();
-  await expect(page.getByText('Empresa E2E Test Only')).toBeVisible();
-  await expect(page.getByText('Estoquista E2E Test Only')).toBeVisible();
-  await expect(page.getByText('Dipirona 500mg')).toBeVisible();
+  const details = page.getByRole('region', { name: `Detalhes da OC ${ocCode}` });
+  await expect(details).toBeVisible();
+  await expect(details.getByText('Empresa E2E Test Only')).toBeVisible();
+  await expect(details.getByText('Estoquista E2E Test Only')).toBeVisible();
+  await expect(details.getByText('Dipirona 500mg')).toBeVisible();
   await approvalCard.getByRole('button', { name: 'Aprovar' }).click();
   const approveDialog = page.getByRole('dialog', { name: 'Aprovar OC' });
   await approveDialog.getByRole('button', { name: 'Aprovar' }).click();

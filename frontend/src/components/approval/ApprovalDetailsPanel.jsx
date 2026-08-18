@@ -233,21 +233,22 @@ function ApprovalDetailsPanel({
   const interactionDisabled = recounting || approvingId === selectedOC?.id || openingDetailsId === selectedOC?.id;
 
   return (
-    <Panel
-      className="aprovacao-details"
-      title={`Detalhes da OC ${formatOcCode(selectedOC?.id)}`}
-      subtitle={`Responsável operacional: ${formatResponsibleName(selectedOC?.estoquista_nome)}`}
-      headerClassName="aprovacao-details-header"
-      actions={(
-        <Button
-          variant="secondary"
-          onClick={onClose}
-          disabled={interactionDisabled}
-        >
-          Fechar
-        </Button>
-      )}
-    >
+    <section aria-label={`Detalhes da OC ${formatOcCode(selectedOC?.id)}`}>
+      <Panel
+        className="aprovacao-details"
+        title={`Detalhes da OC ${formatOcCode(selectedOC?.id)}`}
+        subtitle={`Responsável operacional: ${formatResponsibleName(selectedOC?.estoquista_nome)}`}
+        headerClassName="aprovacao-details-header"
+        actions={(
+          <Button
+            variant="secondary"
+            onClick={onClose}
+            disabled={interactionDisabled}
+          >
+            Fechar
+          </Button>
+        )}
+      >
       <div className="aprovacao-details-meta">
         <div>
           <span>Empresa</span>
@@ -338,7 +339,8 @@ function ApprovalDetailsPanel({
           )}
         </>
       </DataState>
-    </Panel>
+      </Panel>
+    </section>
   );
 }
 
