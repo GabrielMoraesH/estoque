@@ -48,7 +48,9 @@ test('cria, conta, finaliza e aprova uma OC', async ({ page }) => {
     ['A1-01-02', '60', 'E2E-LOTE-01', '1 de 2 localizações contadas'],
     ['A1-02-01', '60', 'E2E-LOTE-02', '2 de 2 localizações contadas']
   ]) {
-    await page.getByText(`Localização: ${address}`).click();
+    await page.getByRole('button', {
+      name: `Contar localização de Dipirona 500mg — ${address}`
+    }).click();
     await expect(page.getByRole('heading', { name: 'Registrar contagem' })).toBeVisible();
     await page.getByLabel('Quantidade').fill(quantity);
     await page.getByLabel('Lote').fill(lot);

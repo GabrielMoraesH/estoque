@@ -5,30 +5,35 @@ function ProductLocationCard({ item, productName, canOpenItem, onOpenItem }) {
   const safeItem = useMemo(() => item || {}, [item]);
   const isCounted = safeItem.status === "contado";
   const isActionDisabled = !canOpenItem || !safeItem.id || isCounted;
+  const locationName = formatLocationName(safeItem.location?.endereco);
+  const accessibleActionName = isCounted
+    ? `Contagem concluída para ${formatProductName(productName || safeItem.produto)} — ${locationName}`
+    : `Contar localização de ${formatProductName(productName || safeItem.produto)} — ${locationName}`;
   const handleOpenItem = useCallback(() => {
     if (!isActionDisabled) onOpenItem(safeItem);
   }, [isActionDisabled, onOpenItem, safeItem]);
-  const details = <>
-    <p>Localização: {formatLocationName(safeItem.location?.endereco)}</p>
-    {safeItem.codigo_barras_snapshot && <p>Código de barras: {safeItem.codigo_barras_snapshot}</p>}
-    {safeItem.validade_snapshot && <p>Validade: {safeItem.validade_snapshot}</p>}
-    {isCounted && <p>Quantidade: {formatQuantity(safeItem.quantidade)} · Lote: {formatLot(safeItem.lote)}</p>}
-  </>;
-
   return (
-    <div className={`card-produto ${getStatusClassName(safeItem.status, "location-status", "pendente")}`} onClick={handleOpenItem}>
-      <div className="desktop-only">
-        <p><strong>{formatProductName(productName || safeItem.produto)}</strong></p>
-        {details}<p>Status: {getItemStatusLabel(safeItem.status)}</p>
-      </div>
-      <div className="mobile-only">
-        <div className="product-card-header"><strong>{formatProductName(productName || safeItem.produto)}</strong><span className="aprovacao-item-status">{getItemStatusLabel(safeItem.status)}</span></div>
-        <div className="product-card-meta">{details}</div>
-        <button className="product-card-action" type="button" onClick={(event) => { event.stopPropagation(); handleOpenItem(); }} disabled={isActionDisabled}>
-          {isCounted ? "Contagem concluída" : "Contar localização"}
-        </button>
-      </div>
-    </div>
+    <button
+      className={`card-produto ${getStatusClassName(safeItem.status, "location-status", "pendente")}`}
+      type="button"
+      aria-label={accessibleActionName}
+      onClick={handleOpenItem}
+      disabled={isActionDisabled}
+    >
+      <span className="product-card-header">
+        <strong>{formatProductName(productName || safeItem.produto)}</strong>
+        <span className="aprovacao-item-status">Status: {getItemStatusLabel(safeItem.status)}</span>
+      </span>
+      <span className="product-card-meta">
+        <span>Localização: {locationName}</span>
+        {safeItem.codigo_barras_snapshot && <span>Código de barras: {safeItem.codigo_barras_snapshot}</span>}
+        {safeItem.validade_snapshot && <span>Validade: {safeItem.validade_snapshot}</span>}
+        {isCounted && <span>Quantidade: {formatQuantity(safeItem.quantidade)} · Lote: {formatLot(safeItem.lote)}</span>}
+      </span>
+      <span className="product-card-action">
+        {isCounted ? "Contagem concluída" : "Contar localização"}
+      </span>
+    </button>
   );
 }
 
