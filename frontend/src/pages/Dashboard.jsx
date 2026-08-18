@@ -4,6 +4,8 @@ import { useNavigate } from "react-router-dom";
 import DataState from "../components/ui/DataState";
 import PageHeader from "../components/ui/PageHeader";
 import Panel from "../components/ui/Panel";
+import Button from "../components/ui/Button";
+import StatusPill, { getStatusPillVariant } from "../components/ui/StatusPill";
 import useEmpresa from "../hooks/useEmpresa";
 import usePermissions from "../hooks/usePermissions";
 import { getDashboardSummary } from "../services/api";
@@ -36,11 +38,11 @@ function IndicatorGrid({ items }) {
   return (
     <div className="dashboard-indicator-grid">
       {items.map((item) => (
-        <div className="dashboard-indicator-card" key={item.label}>
+        <Panel className="metric-card dashboard-indicator-card" key={item.label}>
           <span>{item.label}</span>
           <strong>{item.value}</strong>
           {item.helper && <small>{item.helper}</small>}
-        </div>
+        </Panel>
       ))}
     </div>
   );
@@ -53,14 +55,12 @@ function QuickAccess({ shortcuts }) {
     <Panel title="Acesso rápido">
       <div className="dashboard-shortcuts">
         {shortcuts.map((shortcut) => (
-          <button
+          <Button
             key={shortcut.to}
-            className="primary-button"
-            type="button"
             onClick={() => navigate(shortcut.to)}
           >
             {shortcut.label}
-          </button>
+          </Button>
         ))}
       </div>
     </Panel>
@@ -84,21 +84,20 @@ function AdminAttention({ tasks, empty }) {
       >
         <div className="dashboard-task-list">
           {tasks.map((task) => (
-            <article className="dashboard-task-card" key={task.id}>
-              <div className="dashboard-task-main">
-                <div>
+            <article className="dashboard-task-card dashboard-attention-task-card" key={task.id}>
+              <div className="dashboard-attention-task-content">
+                <div className="dashboard-attention-task-header">
                   <p className="dashboard-task-code">OC {formatOcCode(task.id)}</p>
-                  <span className={`status-pill status-${task.status || "aberta"}`}>
-                    {getOcStatusLabel(task.status)}
-                  </span>
+                  <Button
+                    variant="secondary"
+                    onClick={() => navigate(task.action_to || "/aprovacao")}
+                  >
+                    Abrir
+                  </Button>
                 </div>
-                <button
-                  className="secondary-button"
-                  type="button"
-                  onClick={() => navigate(task.action_to || "/aprovacao")}
-                >
-                  Abrir
-                </button>
+                <StatusPill variant={getStatusPillVariant(task.status)}>
+                  {getOcStatusLabel(task.status)}
+                </StatusPill>
               </div>
 
               <dl className="dashboard-task-meta">
@@ -148,17 +147,16 @@ function EstoquistaTasks({ tasks, empty }) {
               <div className="dashboard-task-main">
                 <div>
                   <p className="dashboard-task-code">OC {formatOcCode(task.id)}</p>
-                  <span className={`status-pill status-${task.status || "aberta"}`}>
+                  <StatusPill variant={getStatusPillVariant(task.status)}>
                     {getOcStatusLabel(task.status)}
-                  </span>
+                  </StatusPill>
                 </div>
-                <button
-                  className="secondary-button"
-                  type="button"
+                <Button
+                  variant="secondary"
                   onClick={() => navigate(task.action_to || `/oc/${task.id}`)}
                 >
                   Abrir OC
-                </button>
+                </Button>
               </div>
 
               <div className="dashboard-progress">

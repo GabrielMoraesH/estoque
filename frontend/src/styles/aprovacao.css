@@ -8,6 +8,16 @@
   gap: 16px;
 }
 
+.aprovacao-list .oc-info > .status-pill {
+  align-self: flex-start;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.aprovacao-list .oc-actions .button {
+  width: 128px;
+}
+
 .aprovar-btn {
   background: #22c55e;
   color: #ffffff;
@@ -67,48 +77,22 @@
   font-weight: 800;
 }
 
-.aprovacao-close-button {
-  min-width: 110px;
-  height: 42px;
-  border: 1px solid #d3dbe7;
-  border-radius: 8px;
-  background: #f8fafc;
-  color: #223c79;
-  font-size: 14px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
-}
-
-.aprovacao-close-button:hover,
-.aprovacao-close-button:focus-visible,
-.aprovacao-detail-button:hover,
-.aprovacao-detail-button:focus-visible {
-  background: #eef4ff;
-  border-color: #c3d2eb;
-  outline: none;
-  transform: translateY(-1px);
-  box-shadow: 0 0 0 3px rgba(34, 60, 121, 0.1);
-}
-
-.aprovacao-close-button:active,
-.aprovacao-detail-button:active {
-  transform: translateY(1px);
-}
-
-.aprovacao-table-wrapper {
-  overflow-x: auto;
-}
-
 .aprovacao-table {
   width: 100%;
-  min-width: 1040px;
+  min-width: 1180px;
+  table-layout: fixed;
   border-collapse: separate;
   border-spacing: 0;
 }
 
+.aprovacao-table-wrapper {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
 .aprovacao-table th {
-  padding: 0 12px 14px 0;
+  padding: var(--space-3) var(--space-3) var(--space-3) 0;
   text-align: left;
   font-size: 13px;
   font-weight: 800;
@@ -118,15 +102,51 @@
 }
 
 .aprovacao-table td {
-  padding: 16px 12px 16px 0;
+  min-width: 0;
+  padding: var(--space-4) var(--space-3) var(--space-4) 0;
   border-top: 1px solid #e5ebf3;
   color: #334155;
   line-height: 1.45;
+  overflow-wrap: anywhere;
 }
+
+.aprovacao-table th:first-child,
+.aprovacao-table td:first-child {
+  padding-left: var(--space-3);
+}
+
+.aprovacao-table th:last-child,
+.aprovacao-table td:last-child {
+  padding-right: var(--space-3);
+}
+
+.aprovacao-table :is(th, td):nth-child(2),
+.aprovacao-table :is(th, td):nth-child(3),
+.aprovacao-table :is(th, td):nth-child(4),
+.aprovacao-table :is(th, td):nth-child(5),
+.aprovacao-table :is(th, td):nth-child(6),
+.aprovacao-table :is(th, td):nth-child(7),
+.aprovacao-table :is(th, td):nth-child(9) {
+  text-align: center;
+}
+
+.aprovacao-table th:nth-child(1) { width: 23%; }
+.aprovacao-table th:nth-child(2),
+.aprovacao-table th:nth-child(3) { width: 8%; }
+.aprovacao-table th:nth-child(4) { width: 7%; }
+.aprovacao-table th:nth-child(5),
+.aprovacao-table th:nth-child(6) { width: 10%; }
+.aprovacao-table th:nth-child(7) { width: 9%; }
+.aprovacao-table th:nth-child(8) { width: 17%; }
+.aprovacao-table th:nth-child(9) { width: 8%; }
+
+.aprovacao-table:not(.aprovacao-table--with-recount) th:nth-child(1) { width: 25%; }
+.aprovacao-table:not(.aprovacao-table--with-recount) th:nth-child(8) { width: 23%; }
 
 .aprovacao-product-name {
   font-weight: 700;
   color: #0f172a;
+  overflow-wrap: anywhere;
 }
 
 .aprovacao-product-name small {
@@ -168,16 +188,12 @@
 }
 
 .aprovacao-detail-button {
-  min-width: 94px;
-  height: 38px;
-  border: 1px solid #d3dbe7;
-  border-radius: 8px;
-  background: #f8fafc;
-  color: #223c79;
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+  padding: 6px 8px;
   font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+  white-space: normal;
 }
 
 .aprovacao-checkbox {
@@ -190,24 +206,6 @@
 .aprovacao-checkbox:focus-visible {
   outline: 3px solid rgba(249, 115, 22, 0.22);
   outline-offset: 3px;
-}
-
-.aprovacao-item-status {
-  display: inline-flex;
-  align-items: center;
-  width: fit-content;
-  min-height: 28px;
-  padding: 0 10px;
-  border-radius: 999px;
-  background: #eef4ff;
-  color: #223c79;
-  font-size: 12px;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-  white-space: nowrap;
-  overflow-wrap: normal;
-  word-break: normal;
 }
 
 .counting-trace {
@@ -256,32 +254,6 @@
 
 .aprovacao-recount-button {
   min-width: 220px;
-  height: 44px;
-  border: none;
-  border-radius: 8px;
-  background: #f97316;
-  color: #ffffff;
-  font-size: 14px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: background-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
-}
-
-.aprovacao-recount-button:not(:disabled):hover,
-.aprovacao-recount-button:not(:disabled):focus-visible {
-  background: #ea580c;
-  transform: translateY(-1px);
-  outline: none;
-  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.16);
-}
-
-.aprovacao-recount-button:not(:disabled):active {
-  transform: translateY(1px);
-}
-
-.aprovacao-recount-button:disabled {
-  opacity: 0.72;
-  cursor: not-allowed;
 }
 
 .aprovacao-modal-overlay {
@@ -603,6 +575,10 @@
     gap: 8px;
   }
 
+  .aprovacao-list .oc-actions .button {
+    width: 100%;
+  }
+
   .aprovacao-details-header {
     flex-direction: column;
     gap: 10px;
@@ -621,20 +597,6 @@
     align-items: flex-start;
     flex-direction: column;
     gap: 7px;
-  }
-
-  .aprovacao-close-button {
-    width: 100%;
-    min-height: 46px;
-    white-space: normal;
-  }
-
-  .aprovacao-table {
-    min-width: 860px;
-  }
-
-  .aprovacao-table td {
-    padding: 14px 10px 14px 0;
   }
 
   .aprovacao-detail-button {
@@ -776,9 +738,6 @@
     line-height: 1.4;
   }
 
-  .aprovacao-modal .aprovacao-close-button {
-    min-height: 46px;
-  }
 }
 
 @media (max-width: 480px) {

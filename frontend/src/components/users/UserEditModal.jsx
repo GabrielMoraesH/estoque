@@ -1,5 +1,7 @@
 import { memo, useCallback, useEffect, useMemo } from "react";
 import { areUserFormsEqual, getEditableUser } from "./userFormData";
+import Button from "../ui/Button";
+import FormField from "../ui/FormField";
 
 const ROLE_LABELS = {
   admin: "Admin",
@@ -121,28 +123,27 @@ function UserEditModal({
         </div>
 
         <div className="users-edit-form">
-          <div className="users-field">
-            <label htmlFor="edit-nome">Nome</label>
+          <FormField label="Nome" htmlFor="edit-nome">
             <input
               id="edit-nome"
               value={safeEditingUser.nome || ""}
               onChange={handleFieldChange("nome")}
               disabled={isSaving}
+              className="field-control"
             />
-          </div>
+          </FormField>
 
-          <div className="users-field">
-            <label htmlFor="edit-login">Login</label>
+          <FormField label="Login" htmlFor="edit-login">
             <input
               id="edit-login"
               value={safeEditingUser.login || ""}
               onChange={handleFieldChange("login")}
               disabled={isSaving}
+              className="field-control"
             />
-          </div>
+          </FormField>
 
-          <div className="users-field">
-            <label htmlFor="edit-senha">Nova senha</label>
+          <FormField label="Nova senha" htmlFor="edit-senha" description="Deixe em branco para manter a senha atual.">
             <input
               id="edit-senha"
               type="password"
@@ -151,8 +152,9 @@ function UserEditModal({
               minLength={6}
               onChange={handleFieldChange("senha")}
               disabled={isSaving}
+              className="field-control"
             />
-          </div>
+          </FormField>
 
           <div className={`users-role-level-row${showLevelSelect ? " has-level" : ""}`}>
             <div className="users-field">
@@ -162,6 +164,7 @@ function UserEditModal({
                 value={safeEditingUser.role || "gestor"}
                 onChange={handleFieldChange("role")}
                 disabled={isSaving}
+                className="field-control"
               >
                 <option value="gestor">{ROLE_LABELS.gestor}</option>
                 <option value="estoquista">{ROLE_LABELS.estoquista}</option>
@@ -172,11 +175,12 @@ function UserEditModal({
             {showLevelSelect && (
               <div className="users-field">
                 <label htmlFor="edit-nivel">Nivel do estoquista</label>
-                <select
-                  id="edit-nivel"
-                  value={safeEditingUser.nivel_estoquista || 1}
-                  onChange={handleNivelChange}
-                  disabled={isSaving}
+              <select
+                id="edit-nivel"
+                value={safeEditingUser.nivel_estoquista || 1}
+                onChange={handleNivelChange}
+                disabled={isSaving}
+                className="field-control"
                 >
                   <option value={1}>Nivel 1</option>
                   <option value={2}>Nivel 2</option>
@@ -238,23 +242,23 @@ function UserEditModal({
         </div>
 
         <div className="users-modal-actions">
-          <button
-            className="users-modal-cancel"
+          <Button
+            variant="secondary" className="users-modal-cancel"
             type="button"
             onClick={onCancel}
             disabled={isSaving}
           >
             Cancelar
-          </button>
+          </Button>
 
-          <button
+          <Button
             className="users-save-button"
             type="button"
             onClick={handleSave}
             disabled={isSaving || !hasPendingChanges}
           >
             {isSaving ? "Salvando..." : "Salvar alteracoes"}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

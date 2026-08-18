@@ -9,6 +9,8 @@ import {
 } from "../../utils/formatters";
 import { getRenderableList } from "../../utils/ocData";
 import OcEmpresaBadge from "../ocs/OcEmpresaBadge";
+import Button from "../ui/Button";
+import StatusPill from "../ui/StatusPill";
 
 const ApprovalOcCard = memo(function ApprovalOcCard({
   oc,
@@ -35,9 +37,9 @@ const ApprovalOcCard = memo(function ApprovalOcCard({
   return (
     <div className="oc-card">
       <div className="oc-info">
-        <span className="status-badge">
+        <StatusPill variant="warning">
           {getOcStatusLabel("aguardando_aprovacao", { uppercase: true })}
-        </span>
+        </StatusPill>
         <OcEmpresaBadge oc={oc} />
         <p className="oc-codigo">OC {formatOcCode(oc?.id)}</p>
         <div className="oc-meta-row">
@@ -49,24 +51,22 @@ const ApprovalOcCard = memo(function ApprovalOcCard({
       </div>
 
       <div className="oc-actions">
-        <button
-          className="btn localizar"
-          type="button"
+        <Button
+          variant="secondary"
           onClick={handleOpenDetails}
           disabled={isBusy}
         >
           {isOpeningDetails ? "Abrindo..." : "Abrir detalhes"}
-        </button>
+        </Button>
 
         {canApprove && (
-          <button
-            className="btn aprovar-btn"
-            type="button"
+          <Button
+            variant="primary"
             onClick={handleApprove}
             disabled={isBusy}
           >
             {isApproving ? "Aprovando..." : "Aprovar"}
-          </button>
+          </Button>
         )}
       </div>
     </div>

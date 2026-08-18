@@ -3,6 +3,8 @@ import DataState from "../ui/DataState";
 import CountingTrace from "../CountingTrace";
 import Panel from "../ui/Panel";
 import TableContainer from "../ui/TableContainer";
+import Button from "../ui/Button";
+import StatusPill, { getStatusPillVariant } from "../ui/StatusPill";
 import OcEmpresaBadge from "../ocs/OcEmpresaBadge";
 import {
   formatBalance,
@@ -56,30 +58,32 @@ const ApprovalDetailsRow = memo(function ApprovalDetailsRow({
       <td>{formatBalance(item?.saldoSistemaTotal)}</td>
       <td>{formatBalance(item?.saldoContadoTotal)}</td>
       <td className={`aprovacao-difference ${hasDifference ? "has-difference" : "no-difference"}`}>
-        {formatSignedNumber(item?.diferencaTotal)} — {hasDifference ? "Com divergência" : "Sem divergência"}
+        <span aria-label={`Diferença de ${formatSignedNumber(item?.diferencaTotal)}, ${hasDifference ? "com divergência" : "sem divergência"}`}>
+          {formatSignedNumber(item?.diferencaTotal)}
+        </span>
       </td>
       <td>
-        <button
+        <Button
+          variant="secondary"
           className="aprovacao-detail-button"
-          type="button"
           onClick={handleOpenLocationDetails}
           disabled={interactionDisabled}
         >
           Ver localizações
-        </button>
+        </Button>
       </td>
       <td>
-        <button
+        <Button
+          variant="secondary"
           className="aprovacao-detail-button"
-          type="button"
           onClick={handleOpenLotDetails}
           disabled={interactionDisabled}
         >
           Ver lotes
-        </button>
+        </Button>
       </td>
       <td>
-        <span className="aprovacao-item-status">{getItemStatusLabel(item?.status)}</span>
+        <StatusPill variant={getStatusPillVariant(item?.status)}>{getItemStatusLabel(item?.status)}</StatusPill>
       </td>
       <td>
         <CountingTrace trace={item?.countingTrace} compact />
@@ -140,7 +144,7 @@ const ApprovalDetailsMobileCard = memo(function ApprovalDetailsMobileCard({
     <article className="aprovacao-mobile-card">
       <div className="aprovacao-mobile-card-header">
         <strong>{item?.codigo ? `${item.codigo} — ` : ""}{formatProductName(item)}</strong>
-        <span className="aprovacao-item-status">{getItemStatusLabel(item?.status)}</span>
+        <StatusPill variant={getStatusPillVariant(item?.status)}>{getItemStatusLabel(item?.status)}</StatusPill>
       </div>
 
       <div className="aprovacao-mobile-metrics">
@@ -155,7 +159,9 @@ const ApprovalDetailsMobileCard = memo(function ApprovalDetailsMobileCard({
         <div className="aprovacao-mobile-metric">
           <span>Diferença</span>
           <strong className={`aprovacao-difference ${hasDifference ? "has-difference" : "no-difference"}`}>
-            {formatSignedNumber(item?.diferencaTotal)} — {hasDifference ? "Com divergência" : "Sem divergência"}
+            <span aria-label={`Diferença de ${formatSignedNumber(item?.diferencaTotal)}, ${hasDifference ? "com divergência" : "sem divergência"}`}>
+              {formatSignedNumber(item?.diferencaTotal)}
+            </span>
           </strong>
         </div>
       </div>
@@ -163,23 +169,23 @@ const ApprovalDetailsMobileCard = memo(function ApprovalDetailsMobileCard({
       <CountingTrace trace={item?.countingTrace} compact />
 
       <div className="aprovacao-mobile-actions">
-        <button
+        <Button
+          variant="secondary"
           className="aprovacao-detail-button"
-          type="button"
           onClick={handleOpenLocationDetails}
           disabled={interactionDisabled}
         >
           Ver localizações
-        </button>
+        </Button>
 
-        <button
+        <Button
+          variant="secondary"
           className="aprovacao-detail-button"
-          type="button"
           onClick={handleOpenLotDetails}
           disabled={interactionDisabled}
         >
           Ver lotes
-        </button>
+        </Button>
         <button className="aprovacao-detail-button" type="button" onClick={handleOpenHistoryDetails} disabled={interactionDisabled}>
           Ver histórico completo
         </button>
@@ -233,14 +239,13 @@ function ApprovalDetailsPanel({
       subtitle={`Responsável operacional: ${formatResponsibleName(selectedOC?.estoquista_nome)}`}
       headerClassName="aprovacao-details-header"
       actions={(
-        <button
-          className="secondary-button"
-          type="button"
+        <Button
+          variant="secondary"
           onClick={onClose}
           disabled={interactionDisabled}
         >
           Fechar
-        </button>
+        </Button>
       )}
     >
       <div className="aprovacao-details-meta">
@@ -271,18 +276,18 @@ function ApprovalDetailsPanel({
       >
         <>
           <TableContainer className="aprovacao-table-wrapper desktop-only">
-            <table className="aprovacao-table">
+            <table className={`aprovacao-table${canRequestRecount ? " aprovacao-table--with-recount" : ""}`}>
               <thead>
                 <tr>
-                  <th>Produto</th>
-                  <th>Saldo do sistema</th>
-                  <th>Saldo contado</th>
-                  <th>Diferença</th>
-                  <th>Localizações</th>
-                  <th>Lotes</th>
-                  <th>Status</th>
-                  <th>Contagens</th>
-                  {canRequestRecount && <th>Recontar</th>}
+                  <th scope="col">Produto</th>
+                  <th scope="col">Saldo sistema</th>
+                  <th scope="col">Saldo contado</th>
+                  <th scope="col">Diferença</th>
+                  <th scope="col">Localizações</th>
+                  <th scope="col">Lotes</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Contagens</th>
+                  {canRequestRecount && <th scope="col">Recontar</th>}
                 </tr>
               </thead>
               <tbody>
@@ -321,14 +326,14 @@ function ApprovalDetailsPanel({
 
           {canRequestRecount && (
             <div className="aprovacao-recount-actions">
-              <button
+              <Button
+                variant="danger"
                 className="aprovacao-recount-button"
-                type="button"
                 onClick={onSendToRecount}
                 disabled={interactionDisabled}
               >
                 {recounting ? "Enviando para recontagem..." : "Enviar para recontagem"}
-              </button>
+              </Button>
             </div>
           )}
         </>

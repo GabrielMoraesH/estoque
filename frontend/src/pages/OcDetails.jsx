@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
 import BackButton from "../components/BackButton";
 import DataState from "../components/ui/DataState";
+import Button from "../components/ui/Button";
 import PageHeader from "../components/ui/PageHeader";
 import Panel from "../components/ui/Panel";
 import ConfirmModal from "../components/ui/ConfirmModal";
@@ -206,8 +207,13 @@ function OcDetails() {
 
         {!loading && !loadError && (
           <Panel className="oc-operational-progress">
-            <div><strong>Progresso da contagem</strong><p>{progress.counted} de {progress.total} localizações contadas</p></div>
-            {canFinalizeOc && <button className="primary-button" type="button" disabled={!readyToFinalize || finalizing} onClick={() => setShowFinalizeConfirm(true)}>{finalizing ? "Finalizando..." : "Finalizar contagem"}</button>}
+            <div className="oc-progress-header">
+              <div className="oc-progress-copy">
+                <strong>Progresso da contagem</strong>
+                <p>{progress.counted} de {progress.total} localizações contadas</p>
+              </div>
+              {canFinalizeOc && <Button className="oc-finalize-button" disabled={!readyToFinalize || finalizing} onClick={() => setShowFinalizeConfirm(true)}>{finalizing ? "Finalizando..." : "Finalizar contagem"}</Button>}
+            </div>
             {!readyToFinalize && progress.total > 0 && <p className="oc-progress-hint">Conclua as localizações pendentes para finalizar.</p>}
           </Panel>
         )}

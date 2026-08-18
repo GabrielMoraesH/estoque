@@ -4,11 +4,12 @@ import {
   formatOcCode,
   formatQuantity,
   formatRelativeTime,
-  formatResponsibleName,
-  getStatusClassName
+  formatResponsibleName
 } from "../../utils/formatters";
 import { getOperationalOcStatus, getOperationalOcStatusLabel } from "../../utils/ocData";
 import OcEmpresaBadge from "./OcEmpresaBadge";
+import Button from "../ui/Button";
+import StatusPill, { getStatusPillVariant } from "../ui/StatusPill";
 
 function GestorOcCard({ oc, onOpenOc }) {
   const safeOc = oc || {};
@@ -16,13 +17,13 @@ function GestorOcCard({ oc, onOpenOc }) {
   const handleOpenOc = useCallback(() => {
     onOpenOc(safeOc.id);
   }, [safeOc.id, onOpenOc]);
+  const status = getOperationalOcStatus(safeOc);
+  const statusVariant = getStatusPillVariant(status);
 
   return (
     <div className="oc-card gestor-oc-card">
       <div className="oc-info gestor-oc-info">
-        <span className={`status-badge ${getStatusClassName(getOperationalOcStatus(safeOc))}`}>
-          {getOperationalOcStatusLabel(safeOc)}
-        </span>
+        <StatusPill variant={statusVariant}>{getOperationalOcStatusLabel(safeOc)}</StatusPill>
         <OcEmpresaBadge oc={safeOc} />
 
         <div className="gestor-oc-headline">
@@ -61,9 +62,9 @@ function GestorOcCard({ oc, onOpenOc }) {
       </div>
 
       <div className="oc-actions gestor-oc-actions">
-        <button className="btn localizar" type="button" onClick={handleOpenOc}>
+        <Button variant="secondary" onClick={handleOpenOc}>
           Abrir detalhes
-        </button>
+        </Button>
       </div>
     </div>
   );

@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import CountingTrace from "../CountingTrace";
+import Button from "../ui/Button";
 
 function ApprovalDetailModal({ detailModal, onClose }) {
   useEffect(() => {
@@ -34,14 +35,14 @@ function ApprovalDetailModal({ detailModal, onClose }) {
       >
         <div className="aprovacao-modal-header">
           <h3 id="approval-detail-modal-title">{detailModal.title || "Detalhes"}</h3>
-          <button
+          <Button
+            variant="secondary"
             className="aprovacao-close-button"
-            type="button"
             onClick={onClose}
             autoFocus
           >
             Fechar
-          </button>
+          </Button>
         </div>
 
         <div className="aprovacao-modal-list">

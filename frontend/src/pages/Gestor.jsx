@@ -10,6 +10,9 @@ import BackButton from "../components/BackButton";
 import DataState from "../components/ui/DataState";
 import PageHeader from "../components/ui/PageHeader";
 import Panel from "../components/ui/Panel";
+import Button from "../components/ui/Button";
+import FilterPanel from "../components/ui/FilterPanel";
+import FormField from "../components/ui/FormField";
 import SectionHeader from "../components/ui/SectionHeader";
 import GestorOcCard from "../components/ocs/GestorOcCard";
 import GestorOverviewStats from "../components/ocs/GestorOverviewStats";
@@ -167,16 +170,14 @@ function Gestor() {
           title="Central do gestor"
           subtitle="Crie novas OCs e acompanhe abaixo tudo o que já foi distribuído para contagem."
           actions={<div className="gestor-toolbar-actions">
-            <button className="secondary-button" type="button" onClick={handleExport} disabled={exporting || effectiveLoading}>
+            <Button variant="secondary" onClick={handleExport} disabled={exporting || effectiveLoading}>
               {exporting ? "Gerando CSV..." : "Exportar CSV"}
-            </button>
-            {canCreateOc && <button
-              className="primary-button"
-              type="button"
+            </Button>
+            {canCreateOc && <Button
               onClick={handleGoToGerarOc}
             >
               Gerar OC
-            </button>}
+            </Button>}
           </div>}
         />
 
@@ -186,27 +187,27 @@ function Gestor() {
           subtitle="Cada card mostra o status atual, o responsável pela contagem e a última movimentação."
         />
 
-        <div className="gestor-filters" role="search" aria-label="Filtrar ordens de contagem">
-          <label>
-            <span>Buscar</span>
+        <FilterPanel className="gestor-filters" role="search" aria-label="Filtrar ordens de contagem">
+          <FormField label="Buscar" htmlFor="gestor-search">
             <input
+              id="gestor-search"
+              className="field-control"
               type="search"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="OC, criador ou responsável"
             />
-          </label>
-          <label>
-            <span>Status</span>
-            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+          </FormField>
+          <FormField label="Status" htmlFor="gestor-status">
+            <select id="gestor-status" className="field-control" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
               <option value="todas">Todas</option>
               <option value="em_contagem">Em contagem</option>
               <option value="aguardando_aprovacao">Aguardando aprovação</option>
               <option value="em_recontagem">Em recontagem</option>
               <option value="finalizada">Finalizadas</option>
             </select>
-          </label>
-        </div>
+          </FormField>
+        </FilterPanel>
 
         <DataState
           loading={effectiveLoading}

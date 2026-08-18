@@ -1,19 +1,32 @@
 .login-page {
+  --login-primary: #0b6e86;
+  --login-primary-dark: #064b5c;
+  --login-surface: #ffffff;
+  --login-border: #e6edf2;
+  --login-border-strong: #d6e6ee;
+  --login-text: #1f2d3a;
+  --login-muted: #6d8593;
+  --login-focus-ring: rgba(11, 110, 134, 0.14);
   min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 32px;
-  background: #197b92;
+  padding: var(--space-6);
+  box-sizing: border-box;
+  background:
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.14), transparent 34%),
+    linear-gradient(135deg, var(--login-primary-dark), var(--login-primary));
 }
 
 .login-card {
   width: 100%;
   max-width: 400px;
-  background: #ffffff;
-  border-radius: 14px;
-  padding: 34px 42px 34px;
-  box-shadow: 0 14px 28px rgba(10, 53, 64, 0.18);
+  padding: var(--space-6);
+  box-sizing: border-box;
+  background: var(--login-surface);
+  border: 1px solid rgba(230, 237, 242, 0.9);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 24px 70px rgba(15, 34, 48, 0.28);
 }
 
 .login-logo {
@@ -21,164 +34,88 @@
   width: 100%;
   max-width: 380px;
   height: auto;
-  margin: 0 auto 28px;
+  margin: 0 auto var(--space-5);
 }
 
-.login-copy {
-  margin-bottom: 22px;
-}
+.login-copy { display: none; }
 
 .login-title {
-  margin: 0 0 8px;
-  font-size: 30px;
+  margin: 0 0 var(--space-2);
+  color: var(--login-text);
+  font-size: var(--font-size-2xl);
   line-height: 1.1;
-  color: #0f172a;
 }
 
 .login-subtitle {
   margin: 0;
-  font-size: 14px;
-  line-height: 1.55;
-  color: #64748b;
+  color: var(--login-muted);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-normal);
 }
 
-.login-form {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.login-field {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
+.login-form { display: flex; flex-direction: column; gap: var(--space-4); }
+.login-field { display: flex; flex-direction: column; gap: var(--space-2); }
 
 .login-field label {
+  color: var(--login-text);
   font-size: 13px;
-  font-weight: 800;
-  color: #14586a;
+  font-weight: var(--font-weight-bold);
 }
 
 .login-input {
   width: 100%;
   height: 44px;
   padding: 0 14px;
-  border: 1px solid #d5e0e5;
-  border-radius: 8px;
-  font-size: 14px;
-  color: #1f2937;
-  outline: none;
   box-sizing: border-box;
+  border: 1px solid var(--login-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--login-surface);
+  color: var(--login-text);
+  font-size: var(--font-size-sm);
+  outline: none;
   transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
 }
 
-.login-input::placeholder {
-  color: #8aa0af;
-}
+.login-input::placeholder { color: var(--login-muted); }
 
 .login-input:focus {
-  border-color: #197b92;
-  box-shadow: 0 0 0 3px rgba(25, 123, 146, 0.12);
-  background: #ffffff;
+  border-color: var(--login-primary);
+  box-shadow: 0 0 0 3px var(--login-focus-ring);
+  background: var(--login-surface);
 }
 
 .login-button {
-  margin-top: 14px;
-  height: 42px;
-  border: none;
-  border-radius: 8px;
-  background: #197b92;
-  color: #ffffff;
+  width: 100%;
+  min-height: 44px;
+  margin-top: var(--space-2);
+  border: 1px solid var(--login-primary);
+  border-radius: var(--radius-sm);
+  background: var(--login-primary);
+  color: var(--login-surface);
   font-size: 15px;
-  font-weight: 700;
+  font-weight: var(--font-weight-semibold);
   letter-spacing: 0.3px;
   cursor: pointer;
-  box-shadow: 0 10px 18px rgba(25, 123, 146, 0.18);
+  box-shadow: 0 10px 18px var(--login-focus-ring);
   transition: background-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
 }
 
-.login-button:hover,
-.login-button:focus-visible {
-  background: #166d82;
-  transform: translateY(-1px);
-  outline: none;
-  box-shadow: 0 0 0 3px rgba(25, 123, 146, 0.14), 0 10px 18px rgba(25, 123, 146, 0.18);
-}
-
-.login-button:active {
-  transform: translateY(1px);
-}
-
-.login-button:disabled {
-  opacity: 0.72;
-  cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
-}
+.login-button:hover:not(:disabled) { background: var(--login-primary-dark); border-color: var(--login-primary-dark); transform: translateY(-1px); }
+.login-button:focus-visible { outline: 3px solid var(--login-focus-ring); outline-offset: 2px; }
+.login-button:active:not(:disabled) { transform: translateY(1px); }
+.login-button:disabled { opacity: 0.72; cursor: not-allowed; transform: none; box-shadow: none; }
 
 @media (max-width: 520px) {
-  .login-page {
-    align-items: stretch;
-    width: 100%;
-    max-width: 100%;
-    padding: 12px;
-    overflow-x: hidden;
-  }
+  .login-page { align-items: center; padding: var(--space-3); }
+  .login-card { min-width: 0; padding: var(--space-5) var(--space-4); border-radius: var(--radius-md); }
+  .login-logo { max-width: 280px; margin-bottom: var(--space-4); }
+  .login-title { margin-bottom: var(--space-1); font-size: var(--font-size-xl); }
+  .login-subtitle { font-size: 13px; }
+  .login-form { gap: var(--space-3); }
+  .login-field { gap: var(--space-2); }
 
-  .login-card {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    min-height: calc(100vh - 24px);
-    min-width: 0;
-    padding: 22px 16px;
-    border-radius: 12px;
-    overflow-x: hidden;
-  }
+  .login-input,
+  .login-button { min-height: 48px; height: 48px; font-size: var(--font-size-base); }
 
-  .login-logo {
-    max-width: 280px;
-    margin-bottom: 18px;
-  }
-
-  .login-copy {
-    margin-bottom: 16px;
-  }
-
-  .login-title {
-    font-size: 24px;
-    margin-bottom: 4px;
-  }
-
-  .login-subtitle {
-    font-size: 13px;
-    line-height: 1.45;
-  }
-
-  .login-form {
-    gap: 14px;
-  }
-
-  .login-field {
-    gap: 6px;
-  }
-
-  .login-field label {
-    font-size: 12px;
-    letter-spacing: 0.02em;
-  }
-
-  .login-input {
-    height: 48px;
-    padding: 0 15px;
-    font-size: 16px;
-  }
-
-  .login-button {
-    margin-top: 6px;
-    min-height: 48px;
-    height: 48px;
-    font-size: 15px;
-  }
+  .login-button { margin-top: var(--space-1); }
 }

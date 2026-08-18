@@ -1,5 +1,7 @@
 import { memo, useCallback, useMemo } from "react";
 import Panel from "../ui/Panel";
+import Button from "../ui/Button";
+import FormField from "../ui/FormField";
 
 function UserCreateForm({ form, empresas = [], empresasLoading = false, creating, onChange, onSubmit }) {
   const selectedEmpresaIds = useMemo(
@@ -44,32 +46,31 @@ function UserCreateForm({ form, empresas = [], empresasLoading = false, creating
   return (
     <Panel className="users-card">
       <form className="users-form" onSubmit={onSubmit}>
-        <div className="users-field">
-          <label htmlFor="nome">Nome *</label>
+        <FormField label="Nome" htmlFor="nome" required>
           <input
             id="nome"
             value={form.nome}
             placeholder="Informe o nome completo"
             onChange={handleNomeChange}
             disabled={creating}
+            className="field-control"
             required
           />
-        </div>
+        </FormField>
 
-        <div className="users-field">
-          <label htmlFor="login">Login *</label>
+        <FormField label="Login" htmlFor="login" required>
           <input
             id="login"
             value={form.login}
             placeholder="Informe o login"
             onChange={handleLoginChange}
             disabled={creating}
+            className="field-control"
             required
           />
-        </div>
+        </FormField>
 
-        <div className="users-field">
-          <label htmlFor="senha">Senha *</label>
+        <FormField label="Senha" htmlFor="senha" required>
           <input
             id="senha"
             type="password"
@@ -79,38 +80,39 @@ function UserCreateForm({ form, empresas = [], empresasLoading = false, creating
             required
             onChange={handleSenhaChange}
             disabled={creating}
+            className="field-control"
           />
-        </div>
+        </FormField>
 
         <div className={`users-role-level-row${showLevelSelect ? " has-level" : ""}`}>
-          <div className="users-field">
-            <label htmlFor="role">Perfil</label>
+          <FormField label="Perfil" htmlFor="role">
             <select
               id="role"
               value={form.role}
               onChange={handleRoleChange}
               disabled={creating}
+              className="field-control"
             >
               <option value="gestor">Gestor</option>
               <option value="estoquista">Estoquista</option>
               <option value="admin">Admin</option>
             </select>
-          </div>
+          </FormField>
 
           {showLevelSelect && (
-            <div className="users-field">
-              <label htmlFor="nivel_estoquista">Nível</label>
+            <FormField label="Nível" htmlFor="nivel_estoquista">
               <select
                 id="nivel_estoquista"
                 value={form.nivel_estoquista || 1}
                 onChange={handleNivelEstoquistaChange}
                 disabled={creating}
+                className="field-control"
               >
                 <option value={1}>Nível 1</option>
                 <option value={2}>Nível 2</option>
                 <option value={3}>Nível 3</option>
               </select>
-            </div>
+            </FormField>
           )}
         </div>
 
@@ -143,9 +145,9 @@ function UserCreateForm({ form, empresas = [], empresasLoading = false, creating
         </fieldset>
 
         <div className="users-actions">
-          <button className="users-button" type="submit" disabled={isSubmitDisabled}>
+          <Button className="users-button" type="submit" disabled={isSubmitDisabled}>
             {creating ? "Criando..." : "Criar usuário"}
-          </button>
+          </Button>
         </div>
       </form>
     </Panel>

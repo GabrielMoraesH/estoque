@@ -4,7 +4,7 @@
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: var(--space-5);
 }
 
 .page-header {
@@ -80,11 +80,11 @@
 }
 
 .panel-card {
-  background: #ffffff;
-  border: 1px solid #d9e0ea;
-  border-radius: 12px;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
   padding: 26px 30px;
-  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.06);
+  box-shadow: var(--shadow-card);
   box-sizing: border-box;
 }
 
@@ -105,6 +105,13 @@
 
 .table-container {
   overflow-x: auto;
+}
+
+.table-container-base {
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-card);
 }
 
 .toolbar-card {
@@ -134,19 +141,73 @@
   width: 100%;
   padding: 0 14px;
   border: 1px solid #d3dbe7;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   font-size: 14px;
-  color: #0f172a;
-  background: #f8fafc;
+  color: var(--color-text);
+  background: var(--color-bg-subtle);
   outline: none;
   box-sizing: border-box;
   transition: border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-.field-control:focus {
-  border-color: #223c79;
-  box-shadow: 0 0 0 3px rgba(34, 60, 121, 0.12);
-  background: #ffffff;
+.field-control:focus-visible {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-focus-ring);
+  background: var(--color-bg-card);
+}
+
+.field-control::placeholder {
+  color: var(--color-text-muted);
+  opacity: 1;
+}
+
+.field-control:disabled {
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+.form-field-description,
+.form-field-error {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-normal);
+}
+
+.form-field-description { color: var(--color-text-muted); }
+.form-field-error { color: var(--color-danger); }
+
+.button {
+  min-height: 44px;
+  padding: 0 var(--space-4);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.2;
+  cursor: pointer;
+  transition: background-color .2s ease, border-color .2s ease, color .2s ease, transform .2s ease, box-shadow .2s ease;
+}
+.button:hover:not(:disabled) { transform: translateY(-1px); }
+.button:active:not(:disabled) { transform: translateY(1px); }
+.button:disabled { cursor: not-allowed; opacity: .72; }
+.button-primary { background: var(--color-primary); color: #fff; }
+.button-primary:hover:not(:disabled) { background: var(--color-primary-hover); }
+.button-secondary { border-color: var(--color-border); background: var(--color-bg-subtle); color: var(--color-primary); }
+.button-secondary:hover:not(:disabled) { background: #eef4ff; }
+.button-danger { background: var(--color-danger); color: #fff; }
+.button-danger:hover:not(:disabled) { background: #991b1b; }
+.button-ghost { background: transparent; color: var(--color-primary); }
+.button-ghost:hover:not(:disabled) { background: #eef4ff; }
+
+.filter-panel {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  align-items: end;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-subtle);
 }
 
 .primary-button {
@@ -231,14 +292,18 @@
   gap: 14px;
 }
 
+.metric-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 122px;
+  padding: var(--space-4);
+  border-color: var(--color-border);
+  box-shadow: var(--shadow-card);
+}
+
 .dashboard-indicator-card {
   min-width: 0;
-  min-height: 122px;
-  padding: 20px;
-  border: 1px solid #d9e0ea;
-  border-radius: 8px;
-  background: #ffffff;
-  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.05);
   box-sizing: border-box;
 }
 
@@ -290,6 +355,29 @@
   flex: 0 0 auto;
 }
 
+.dashboard-attention-task-content {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.dashboard-attention-task-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.dashboard-attention-task-header .button {
+  flex: 0 0 auto;
+}
+
+.dashboard-attention-task-content > .status-pill {
+  align-self: flex-start;
+  justify-self: start;
+  width: fit-content;
+  max-width: 100%;
+}
+
 .dashboard-task-code {
   margin: 0 0 8px;
   color: #0f172a;
@@ -302,31 +390,20 @@
   align-items: center;
   min-height: 26px;
   padding: 4px 10px;
-  border-radius: 999px;
-  background: #eef4ff;
-  color: #223c79;
+  border-radius: var(--radius-pill);
+  background: var(--status-info-bg);
+  color: var(--status-info-text);
   font-size: 12px;
   font-weight: 800;
   line-height: 1.2;
 }
 
-.status-finalizada,
-.status-aprovado {
-  background: #ecfdf5;
-  color: #047857;
-}
-
-.status-aguardando_aprovacao,
-.status-contado {
-  background: #fff7ed;
-  color: #c2410c;
-}
-
-.status-recontagem,
-.status-recontar {
-  background: #fef2f2;
-  color: #b91c1c;
-}
+.status-pill-neutral { background: #e2e8f0; color: #334155; }
+.status-pill-info { background: var(--status-info-bg); color: var(--status-info-text); }
+.status-pill-success { background: var(--status-success-bg); color: var(--status-success-text); }
+.status-pill-warning { background: var(--status-warning-bg); color: var(--status-warning-text); }
+.status-pill-recount { background: var(--status-recount-bg); color: var(--status-recount-text); }
+.status-pill-danger { background: #fef2f2; color: var(--color-danger); }
 
 .dashboard-task-meta {
   display: grid;
@@ -648,6 +725,8 @@
     padding: 15px;
   }
 
+  .metric-card { min-height: 108px; }
+
   .dashboard-indicator-card strong {
     font-size: 28px;
   }
@@ -748,9 +827,26 @@
     min-width: 0;
   }
 
+  .dashboard-attention-task-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .dashboard-attention-task-header .button {
+    width: 100%;
+  }
+
   .dashboard-progress > div:first-child {
     align-items: flex-start;
     flex-direction: column;
     gap: 4px;
   }
+}
+
+@media (max-width: 430px) {
+  .filter-panel { grid-template-columns: 1fr; padding: var(--space-3); }
+}
+
+@media (max-width: 1024px) {
+  .filter-panel { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
 }

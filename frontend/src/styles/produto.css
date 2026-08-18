@@ -94,19 +94,33 @@
 }
 
 .oc-operational-progress {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
+  display: grid;
+  gap: var(--space-5);
 }
 
-.oc-operational-progress p {
-  margin: 4px 0 0;
+.oc-progress-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.oc-progress-copy {
+  min-width: 0;
+}
+
+.oc-progress-copy p {
+  margin: var(--space-1) 0 0;
+  color: var(--color-text-muted);
+}
+
+.oc-finalize-button {
+  flex: 0 0 auto;
 }
 
 .oc-progress-hint {
-  flex-basis: 100%;
-  color: #475569;
+  margin: 0;
+  color: var(--color-text-muted);
 }
 
 .location-status-contado {
@@ -122,11 +136,15 @@
 
 @media (max-width: 768px) {
   .oc-operational-progress {
+    gap: var(--space-4);
+  }
+
+  .oc-progress-header {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .oc-operational-progress .primary-button {
+  .oc-operational-progress .oc-finalize-button {
     width: 100%;
     min-height: 46px;
   }

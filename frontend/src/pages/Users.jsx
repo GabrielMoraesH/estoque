@@ -6,6 +6,7 @@ import "../styles/users.css";
 import { useToast } from "../components/ToastProvider";
 import BackButton from "../components/BackButton";
 import PageHeader from "../components/ui/PageHeader";
+import Button from "../components/ui/Button";
 import UserCreateForm from "../components/users/UserCreateForm";
 import UserListTable from "../components/users/UserListTable";
 import UserEditModal from "../components/users/UserEditModal";
@@ -419,23 +420,23 @@ function UserStatusModal({ user, savingId, onCancel, onConfirm }) {
         <p className="users-modal-user">{user.nome || user.login}</p>
 
         <div className="users-modal-actions">
-          <button
-            className="users-modal-cancel"
+          <Button
+            variant="secondary" className="users-modal-cancel"
             type="button"
             onClick={onCancel}
             disabled={isSaving}
           >
             Cancelar
-          </button>
+          </Button>
 
-          <button
-            className={`users-status-confirm users-status-confirm-${isActive ? "danger" : "success"}`}
+          <Button
+            variant={isActive ? "danger" : "primary"} className={`users-status-confirm users-status-confirm-${isActive ? "danger" : "success"}`}
             type="button"
             onClick={onConfirm}
             disabled={isSaving}
           >
             {isSaving ? "Salvando..." : actionLabel.charAt(0).toUpperCase() + actionLabel.slice(1)}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

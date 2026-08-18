@@ -1,12 +1,17 @@
 .layout {
   display: flex;
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
   background: linear-gradient(180deg, #f4f7fb 0%, #eef3f9 100%);
 }
 
 .sidebar {
   display: block;
   flex-shrink: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .content {
@@ -14,8 +19,11 @@
   display: flex;
   justify-content: center;
   min-width: 0;
+  min-height: 0;
   padding: 24px 32px;
   box-sizing: border-box;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .hamburger {
@@ -39,11 +47,19 @@
 }
 
 @media (max-width: 768px) {
+  body.mobile-menu-open {
+    overflow: hidden;
+  }
+
   .layout {
     display: block;
+    height: auto;
+    min-height: 100vh;
+    min-height: 100dvh;
     width: 100%;
     max-width: 100%;
-    overflow-x: hidden;
+    overflow: visible;
+    overflow-x: clip;
   }
 
   .hamburger {
@@ -129,8 +145,10 @@
     width: 100%;
     max-width: 100%;
     min-height: 100vh;
+    min-height: 100dvh;
     padding: 66px 12px 20px;
-    overflow-x: hidden;
+    overflow: visible;
+    overflow-x: clip;
   }
 }
 

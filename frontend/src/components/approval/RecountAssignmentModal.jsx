@@ -1,5 +1,7 @@
 import { memo, useCallback, useEffect, useId } from "react";
 import OcEmpresaBadge from "../ocs/OcEmpresaBadge";
+import Button from "../ui/Button";
+import FormField from "../ui/FormField";
 
 function getEstoquistaLabel(estoquista) {
   const level = Number(estoquista?.nivel_estoquista);
@@ -94,8 +96,7 @@ function RecountAssignmentModal({
           <OcEmpresaBadge oc={oc} />
         </div>
 
-        <label className="aprovacao-recount-modal-field" htmlFor="novo_estoquista_id">
-          <span>Estoquista</span>
+        <FormField className="aprovacao-recount-modal-field" label="Estoquista" htmlFor="novo_estoquista_id">
           <select
             id="novo_estoquista_id"
             value={selectedEstoquistaId || ""}
@@ -112,7 +113,7 @@ function RecountAssignmentModal({
               </option>
             ))}
           </select>
-        </label>
+        </FormField>
 
         {availableEstoquistas.length === 0 && !loadingEstoquistas && (
           <p className="aprovacao-recount-modal-error">
@@ -121,22 +122,22 @@ function RecountAssignmentModal({
         )}
 
         <div className="aprovacao-recount-modal-actions">
-          <button
+          <Button
+            variant="secondary"
             className="aprovacao-recount-modal-cancel"
-            type="button"
             onClick={onCancel}
             disabled={isBusy}
           >
             Cancelar
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="primary"
             className="aprovacao-recount-modal-confirm"
-            type="button"
             onClick={onConfirm}
             disabled={isBusy || availableEstoquistas.length === 0}
           >
             {confirming ? "Enviando..." : "Enviar"}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

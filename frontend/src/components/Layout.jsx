@@ -16,21 +16,30 @@ function Layout({ children }) {
       return undefined;
     }
 
-    const { body } = document;
-    const previousOverflow = body.style.overflow;
-
-    if (open) {
-      body.style.overflow = "hidden";
-      body.classList.add("mobile-menu-open");
-    } else {
-      body.classList.remove("mobile-menu-open");
-    }
+    document.body.classList.toggle("mobile-menu-open", open);
 
     return () => {
-      body.style.overflow = previousOverflow;
-      body.classList.remove("mobile-menu-open");
+      document.body.classList.remove("mobile-menu-open");
     };
   }, [open]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+
+    const mobileViewport = window.matchMedia("(max-width: 768px)");
+    const closeOutsideMobile = () => {
+      if (!mobileViewport.matches) {
+        setOpen(false);
+      }
+    };
+
+    mobileViewport.addEventListener("change", closeOutsideMobile);
+    closeOutsideMobile();
+
+    return () => mobileViewport.removeEventListener("change", closeOutsideMobile);
+  }, []);
 
   useEffect(() => {
     if (!open || typeof window === "undefined") {

@@ -4,6 +4,8 @@ import { Navigate, useParams } from "react-router-dom";
 import BackButton from "../components/BackButton";
 import DataState from "../components/ui/DataState";
 import PageHeader from "../components/ui/PageHeader";
+import Button from "../components/ui/Button";
+import FormField from "../components/ui/FormField";
 import GestorOcSummaryPanel from "../components/ocs/GestorOcSummaryPanel";
 import OcHistoryTrace from "../components/ocs/OcHistoryTrace";
 import useAuth from "../hooks/useAuth";
@@ -200,18 +202,19 @@ function GestorOcDetails() {
                       <p>Ciclo {activeAssignment.ciclo} · {activeAssignment.fase} · {oc?.localizacoes_contadas ?? 0}/{oc?.total_localizacoes ?? 0}</p>
                     </div>
                     {!reassignOpen ? (
-                      <button type="button" className="button-primary" onClick={openReassignment}>Reatribuir responsável</button>
+                      <Button onClick={openReassignment}>Reatribuir responsável</Button>
                     ) : (
                       <div className="reassign-form">
-                        <label htmlFor="reassign-user">Novo responsável elegível</label>
-                        <select id="reassign-user" value={selectedUserId} onChange={(event) => setSelectedUserId(event.target.value)} disabled={reassigning}>
-                          <option value="">Selecione</option>
-                          {eligibleUsers.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.nome}</option>)}
-                        </select>
+                        <FormField label="Novo responsável elegível" htmlFor="reassign-user">
+                          <select className="field-control" id="reassign-user" value={selectedUserId} onChange={(event) => setSelectedUserId(event.target.value)} disabled={reassigning}>
+                            <option value="">Selecione</option>
+                            {eligibleUsers.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.nome}</option>)}
+                          </select>
+                        </FormField>
                         {reassignError ? <p className="form-error" role="alert">{reassignError}</p> : null}
                         <div className="reassign-actions">
-                          <button type="button" onClick={() => { reassignRequestIdRef.current += 1; submitLockRef.current = false; setReassignOpen(false); setReassigning(false); }} disabled={reassigning}>Cancelar</button>
-                          <button type="button" className="button-primary" onClick={submitReassignment} disabled={reassigning || !selectedUserId}>{reassigning ? "Reatribuindo…" : "Confirmar reatribuição"}</button>
+                          <Button variant="secondary" onClick={() => { reassignRequestIdRef.current += 1; submitLockRef.current = false; setReassignOpen(false); setReassigning(false); }} disabled={reassigning}>Cancelar</Button>
+                          <Button onClick={submitReassignment} disabled={reassigning || !selectedUserId}>{reassigning ? "Reatribuindo…" : "Confirmar reatribuição"}</Button>
                         </div>
                       </div>
                     )}

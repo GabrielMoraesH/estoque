@@ -14,11 +14,11 @@
 .confirm-modal {
   width: 100%;
   max-width: 440px;
-  background: #ffffff;
-  border: 1px solid #e5ebf3;
-  border-radius: 12px;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
   padding: 26px;
-  box-shadow: 0 24px 48px rgba(15, 23, 42, 0.24);
+  box-shadow: var(--shadow-modal);
   animation: modal-enter 0.18s ease-out;
 }
 

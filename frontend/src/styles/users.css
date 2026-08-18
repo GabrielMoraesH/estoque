@@ -1,28 +1,45 @@
 .users-page {
-  gap: 24px;
+  gap: var(--space-5);
 }
 
 .users-card,
 .users-list-card {
-  background: #ffffff;
-  border: 1px solid #d9e0ea;
-  border-radius: 8px;
-  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.06);
+  background: var(--color-bg-card);
+  border-color: var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
 }
 
 .users-card {
-  padding: 28px 30px;
+  padding: var(--space-5) var(--space-6);
 }
 
 .users-list-card {
-  padding: 26px 30px 30px;
+  padding: var(--space-5) var(--space-6) var(--space-6);
 }
 
 .users-form {
   display: grid;
   grid-template-columns: minmax(220px, 1.25fr) minmax(180px, 1fr) minmax(180px, 1fr);
-  gap: 18px 22px;
+  gap: var(--space-4) var(--space-5);
   align-items: end;
+}
+
+/* FormField has a useful general minimum width. In this page's explicit grids,
+   controls must instead be allowed to shrink within their assigned tracks. */
+.users-form > .field-group,
+.users-role-level-row > .field-group,
+.users-filters > .field-group {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.users-form .field-control,
+.users-role-level-row .field-control,
+.users-filters .field-control {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .users-role-level-row {
@@ -195,26 +212,40 @@
 
 .users-filters {
   display: grid;
-  grid-template-columns: minmax(240px, 1fr) minmax(140px, 0.35fr) minmax(140px, 0.35fr);
-  gap: 14px;
+  grid-template-columns: minmax(0, 2fr) minmax(160px, 1fr) minmax(160px, 1fr);
+  gap: var(--space-3);
   align-items: end;
-  margin-bottom: 20px;
+  min-width: 0;
+  margin-bottom: var(--space-5);
 }
 
 .users-table-wrapper {
   width: 100%;
-  overflow-x: auto;
+  min-width: 0;
+  overflow-x: visible;
+  padding: 0 var(--space-2);
+  box-sizing: border-box;
 }
 
 .users-table {
   width: 100%;
-  min-width: 960px;
+  min-width: 0;
+  table-layout: fixed;
   border-collapse: separate;
   border-spacing: 0;
 }
 
+.users-table th:nth-child(1), .users-table td:nth-child(1) { width: 18%; }
+.users-table th:nth-child(2), .users-table td:nth-child(2) { width: 15%; }
+.users-table th:nth-child(3), .users-table td:nth-child(3) { width: 10%; }
+.users-table th:nth-child(4), .users-table td:nth-child(4) { width: 9%; }
+.users-table th:nth-child(5), .users-table td:nth-child(5) { width: 13%; }
+.users-table th:nth-child(6), .users-table td:nth-child(6) { width: 10%; }
+.users-table th:nth-child(7), .users-table td:nth-child(7) { width: 11%; }
+.users-table th:nth-child(8), .users-table td:nth-child(8) { width: 14%; }
+
 .users-table th {
-  padding: 0 12px 12px;
+  padding: var(--space-3) 12px;
   border-bottom: 1px solid #e5ebf3;
   color: #475569;
   font-size: 12px;
@@ -243,13 +274,24 @@
 
 .users-table th:first-child,
 .users-table td:first-child {
-  padding-left: 0;
+  padding-left: var(--space-3);
 }
 
 .users-table th:last-child,
 .users-table td:last-child {
-  padding-right: 0;
+  padding-right: var(--space-3);
   text-align: right;
+}
+
+.users-table td {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.users-table .users-user-cell,
+.users-table .users-muted-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .users-user-cell {
@@ -401,9 +443,9 @@
   max-height: min(88vh, 720px);
   overflow-y: auto;
   padding: 26px;
-  border-radius: 8px;
-  background: #ffffff;
-  box-shadow: 0 24px 54px rgba(15, 23, 42, 0.24);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-card);
+  box-shadow: var(--shadow-modal);
   box-sizing: border-box;
   animation: users-modal-enter 0.18s ease-out;
 }
@@ -655,11 +697,11 @@
   }
 
   .users-table {
-    min-width: 840px;
+    min-width: 0;
   }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 768px) {
   .users-card,
   .users-list-card {
     padding: 16px 14px;
@@ -704,6 +746,12 @@
 
   .users-table {
     min-width: 0;
+    table-layout: auto;
+  }
+
+  .users-table-wrapper {
+    overflow-x: clip;
+    padding: 0;
   }
 
   .users-table thead {
@@ -712,8 +760,7 @@
 
   .users-table,
   .users-table tbody,
-  .users-table tr,
-  .users-table td {
+  .users-table tr {
     display: block;
     width: 100%;
   }
@@ -724,6 +771,9 @@
   }
 
   .users-table tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px 16px;
     padding: 14px;
     border: 1px solid #e5ebf3;
     border-radius: 8px;
@@ -736,23 +786,47 @@
   }
 
   .users-table td {
-    display: grid;
-    grid-template-columns: 92px minmax(0, 1fr);
-    gap: 12px;
-    align-items: center;
-    padding: 9px 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    min-width: 0;
+    padding: 0;
     border-bottom: 0;
     text-align: left;
+    overflow-wrap: break-word;
+    word-break: normal;
   }
 
-  .users-table td:first-child {
-    padding-top: 0;
+  /* Desktop column widths have higher specificity than the generic mobile
+     table rule. Reset each one here, otherwise a visual card still contains
+     eight narrow table columns and its contents wrap character by character. */
+  .users-table td:nth-child(1),
+  .users-table td:nth-child(2),
+  .users-table td:nth-child(3),
+  .users-table td:nth-child(4),
+  .users-table td:nth-child(5),
+  .users-table td:nth-child(6),
+  .users-table td:nth-child(7),
+  .users-table td:nth-child(8) {
+    width: auto;
   }
 
-  .users-table td:last-child {
-    padding-bottom: 0;
-    text-align: left;
+  .users-table td:nth-child(1),
+  .users-table td:nth-child(2),
+  .users-table td:nth-child(7),
+  .users-table td:nth-child(8) {
+    grid-column: 1 / -1;
   }
+
+  .users-table td:nth-child(1) { grid-row: 1; }
+  .users-table td:nth-child(2) { grid-row: 2; }
+  .users-table td:nth-child(3) { grid-row: 3; }
+  .users-table td:nth-child(6) { grid-row: 3; }
+  .users-table td:nth-child(4) { grid-row: 4; }
+  .users-table td:nth-child(5) { grid-row: 4; }
+  .users-table td:nth-child(7) { grid-row: 5; }
+  .users-table td:nth-child(8) { grid-row: 6; }
 
   .users-table td::before {
     content: attr(data-label);
@@ -760,6 +834,54 @@
     font-size: 11px;
     font-weight: 800;
     text-transform: uppercase;
+  }
+
+  .users-table td:nth-child(1) {
+    gap: 0;
+  }
+
+  .users-table td:nth-child(1)::before,
+  .users-table td:nth-child(2)::before {
+    content: none;
+  }
+
+  .users-table .users-user-cell {
+    min-width: 0;
+  }
+
+  .users-table .users-user-cell strong {
+    font-size: 16px;
+    line-height: 1.35;
+    overflow-wrap: break-word;
+    word-break: normal;
+  }
+
+  .users-table .users-muted-text {
+    overflow-wrap: break-word;
+    word-break: normal;
+  }
+
+  .users-table td:nth-child(7) .users-muted-text {
+    white-space: nowrap;
+  }
+
+  .users-table .users-profile-badge,
+  .users-table .users-level-badge,
+  .users-table .users-company-badge,
+  .users-table .status-pill {
+    width: fit-content;
+    max-width: 100%;
+    overflow-wrap: normal;
+    word-break: normal;
+    white-space: nowrap;
+  }
+
+  .users-table td:nth-child(3) {
+    grid-column: 1;
+  }
+
+  .users-table td:nth-child(6) {
+    grid-column: 2;
   }
 
   .users-company-badge {
@@ -805,9 +927,16 @@
   .users-table tr {
     padding: 12px;
   }
+}
 
-  .users-table td {
-    grid-template-columns: 80px minmax(0, 1fr);
-    gap: 9px;
+@media (max-width: 374px) {
+  .users-table tr {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .users-table td:nth-child(n) {
+    grid-column: 1;
+    grid-row: auto;
   }
 }

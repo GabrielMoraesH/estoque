@@ -5,6 +5,20 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background: var(--color-bg-page);
+  color: var(--color-text);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-focus-ring);
+  outline-offset: 2px;
 }
 
 *,
@@ -40,7 +54,7 @@ code {
   #root {
     width: 100%;
     max-width: 100%;
-    overflow-x: hidden;
+    overflow-x: clip;
   }
 
   body {

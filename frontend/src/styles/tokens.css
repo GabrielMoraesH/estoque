@@ -1,0 +1,48 @@
+:root {
+  --color-primary: #223c79;
+  --color-primary-hover: #1a2f61;
+  --color-bg-page: #f4f7fb;
+  --color-bg-card: #ffffff;
+  --color-bg-subtle: #f8fafc;
+  --color-text: #0f172a;
+  --color-text-muted: #64748b;
+  --color-border: #d9e0ea;
+  --color-focus-ring: rgba(34, 60, 121, 0.14);
+  --color-success: #15803d;
+  --color-warning: #c2410c;
+  --color-danger: #b91c1c;
+
+  --status-info-bg: #eaf1ff;
+  --status-info-text: #1e40af;
+  --status-warning-bg: #fff7e6;
+  --status-warning-text: #9a6700;
+  --status-recount-bg: #fff0e6;
+  --status-recount-text: #c2410c;
+  --status-success-bg: #eaf8ef;
+  --status-success-text: #15803d;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+  --shadow-card: 0 14px 28px rgba(15, 23, 42, 0.06);
+  --shadow-modal: 0 24px 54px rgba(15, 23, 42, 0.24);
+
+  --font-size-sm: 0.875rem;
+  --font-size-base: 1rem;
+  --font-size-lg: 1.125rem;
+  --font-size-xl: 1.5rem;
+  --font-size-2xl: 2rem;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 700;
+  --font-weight-bold: 800;
+  --line-height-normal: 1.5;
+}

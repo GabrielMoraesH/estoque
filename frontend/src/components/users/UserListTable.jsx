@@ -2,6 +2,9 @@ import { memo, useCallback, useMemo, useState } from "react";
 import DataState from "../ui/DataState";
 import Panel from "../ui/Panel";
 import TableContainer from "../ui/TableContainer";
+import FilterPanel from "../ui/FilterPanel";
+import FormField from "../ui/FormField";
+import StatusPill from "../ui/StatusPill";
 
 const ROLE_LABELS = {
   admin: "Admin",
@@ -144,9 +147,9 @@ const UserTableRow = memo(function UserTableRow({
         <span className="users-profile-badge">{ROLE_LABELS[safeUser.role] || "Perfil"}</span>
       </td>
 
-      <td data-label="Nivel">
+      <td data-label="Nível">
         {safeUser.role === "estoquista" && safeUser.nivel_estoquista ? (
-          <span className="users-level-badge">Nivel {safeUser.nivel_estoquista}</span>
+          <span className="users-level-badge">Nível {safeUser.nivel_estoquista}</span>
         ) : (
           <span className="users-muted-text">-</span>
         )}
@@ -159,16 +162,16 @@ const UserTableRow = memo(function UserTableRow({
       </td>
 
       <td data-label="Status">
-        <span className={`users-status-badge users-status-${status}`}>
-          {status === "active" ? "ATIVO" : "INATIVO"}
-        </span>
+        <StatusPill variant={status === "active" ? "success" : "neutral"}>
+          {status === "active" ? "Ativo" : "Inativo"}
+        </StatusPill>
       </td>
 
       <td data-label="Criado em">
         <span className="users-muted-text">{formatCreatedAt(safeUser)}</span>
       </td>
 
-      <td data-label="Acoes">
+      <td data-label="Ações">
         <div className="users-row-actions">
           <UserActionButton label={`Editar ${safeUser.nome || "usuario"}`} onClick={handleEdit}>
             <EditIcon />
@@ -220,49 +223,46 @@ function UserListTable({
   return (
     <Panel
       className="users-list-card"
-      title="Usuarios cadastrados"
+      title="Usuários cadastrados"
       subtitle="Gerencie perfis, empresas de acesso e credenciais sem poluir a listagem principal."
       headerClassName="users-list-header"
     >
       {!loading && !error && safeUsers.length > 0 && (
-        <div className="users-filters" role="search" aria-label="Buscar e filtrar usuarios">
-          <div className="users-field users-search-field">
-            <label htmlFor="users-search">Buscar por nome ou login</label>
+        <FilterPanel className="users-filters" role="search" aria-label="Buscar e filtrar usuários">
+          <FormField className="users-search-field" label="Buscar por nome ou login" htmlFor="users-search">
             <input
               id="users-search"
               type="search"
               value={search}
               placeholder="Digite um nome ou login"
-              onChange={(event) => setSearch(event.target.value)}
+              onChange={(event) => setSearch(event.target.value)} className="field-control"
             />
-          </div>
-          <div className="users-field">
-            <label htmlFor="users-status-filter">Status</label>
-            <select id="users-status-filter" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+          </FormField>
+          <FormField label="Status" htmlFor="users-status-filter">
+            <select className="field-control" id="users-status-filter" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
               <option value="all">Todos</option>
               <option value="active">Ativos</option>
               <option value="inactive">Inativos</option>
             </select>
-          </div>
-          <div className="users-field">
-            <label htmlFor="users-role-filter">Perfil</label>
-            <select id="users-role-filter" value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)}>
+          </FormField>
+          <FormField label="Perfil" htmlFor="users-role-filter">
+            <select className="field-control" id="users-role-filter" value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)}>
               <option value="all">Todos</option>
               <option value="admin">Admin</option>
               <option value="gestor">Gestor</option>
               <option value="estoquista">Estoquista</option>
             </select>
-          </div>
-        </div>
+          </FormField>
+        </FilterPanel>
       )}
       <DataState
         loading={loading}
         error={error}
         empty={safeUsers.length === 0 || filteredUsers.length === 0}
-        loadingTitle="Carregando usuarios"
+        loadingTitle="Carregando usuários"
         loadingMessage="Buscando a lista de acessos cadastrados."
-        errorTitle="Nao foi possivel carregar os usuarios"
-        emptyTitle={safeUsers.length === 0 ? "Nenhum usuario cadastrado" : "Nenhum usuario encontrado"}
+        errorTitle="Não foi possível carregar os usuários"
+        emptyTitle={safeUsers.length === 0 ? "Nenhum usuário cadastrado" : "Nenhum usuário encontrado"}
         emptyMessage={safeUsers.length === 0
           ? "Quando novos gestores ou estoquistas forem criados, eles aparecerao aqui."
           : "Ajuste a busca ou os filtros para ver outros usuarios."}
@@ -272,14 +272,7 @@ function UserListTable({
           <table className="users-table">
             <thead>
               <tr>
-                <th>Nome</th>
-                <th>Login</th>
-                <th>Perfil</th>
-                <th>Nivel</th>
-                <th>Empresas</th>
-                <th>Status</th>
-                <th>Criado em</th>
-                <th>Acoes</th>
+                <th scope="col">Nome</th><th scope="col">Login</th><th scope="col">Perfil</th><th scope="col">Nível</th><th scope="col">Empresas</th><th scope="col">Status</th><th scope="col">Criado em</th><th scope="col">Ações</th>
               </tr>
             </thead>
 
