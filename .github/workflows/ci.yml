@@ -148,6 +148,7 @@ jobs:
           --health-retries 5
     env:
       NODE_ENV: test
+      PORT: "3001"
       DB_HOST: localhost
       DB_PORT: "5432"
       DB_NAME: estoque_med_e2e_test
