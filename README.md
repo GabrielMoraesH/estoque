@@ -300,6 +300,23 @@ O GitHub Actions executa o workflow de CI a cada `push` e `pull request`. Ele in
 
 ## Endpoints Principais do Backend
 
+## E2E
+
+Os testes E2E usam Playwright com Chromium e exercitam navegador, frontend React, API e PostgreSQL descartável. A autenticação usa somente a fixture fictÃ­cia `e2e_admin` / `E2E-test-only-123`.
+
+Para rodar localmente, use PostgreSQL exclusivo cujo nome termine em `_test`, defina `NODE_ENV=test`, `DB_*` e `JWT_SECRET`, e execute:
+
+```bash
+cd backend
+npm run migrate
+npm run seed:e2e
+cd ../frontend
+npx playwright install chromium
+npm run test:e2e
+```
+
+`seed:e2e` aborta se `NODE_ENV` nÃ£o for `test` ou se `DB_NAME` não terminar em `_test`. Nunca use E2E contra banco de desenvolvimento, produção ou ambiente externo. A CI cria um banco separado e publica traces e screenshots somente em falhas.
+
 Base local sugerida:
 
 ```text

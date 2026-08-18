@@ -127,3 +127,68 @@ jobs:
 
       - name: Run PostgreSQL integration tests
         run: npm run test:postgres
+
+  e2e:
+    name: Playwright E2E authentication
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: estoque_med_e2e_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      NODE_ENV: test
+      DB_HOST: localhost
+      DB_PORT: "5432"
+      DB_NAME: estoque_med_e2e_test
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      JWT_SECRET: e2e-test-secret-not-for-production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Install Chromium
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      - name: Apply migrations
+        working-directory: backend
+        run: npm run migrate
+      - name: Prepare E2E fixture
+        working-directory: backend
+        run: npm run seed:e2e
+      - name: Run Playwright authentication E2E
+        working-directory: frontend
+        run: npm run test:e2e
+      - name: Upload Playwright artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-e2e-artifacts
+          path: |
+            frontend/playwright-report/
+            frontend/test-results/
+          if-no-files-found: ignore
