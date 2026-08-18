@@ -58,13 +58,14 @@ function OcCartPanel({
   );
 
   return (
-    <Panel
-      className="gerar-oc-cart-card"
-      title="Resumo da OC"
-      subtitle="Revise os itens selecionados antes de gerar a ordem de contagem."
-      headerClassName="gerar-oc-card-header"
-    >
-      <div className="field-group">
+    <div role="form" aria-label="Gerar ordem de contagem">
+      <Panel
+        className="gerar-oc-cart-card"
+        title="Resumo da OC"
+        subtitle="Revise os itens selecionados antes de gerar a ordem de contagem."
+        headerClassName="gerar-oc-card-header"
+      >
+        <div className="field-group">
         <label htmlFor="estoquista-gerar-oc">Estoquista responsável</label>
         <select
           id="estoquista-gerar-oc"
@@ -87,9 +88,9 @@ function OcCartPanel({
             Nenhum estoquista de ní­vel 1 disponí­vel para esta filial.
           </p>
         )}
-      </div>
+        </div>
 
-      <div className="gerar-oc-cart-list">
+        <div className="gerar-oc-cart-list">
         {safeCart.length === 0 ? (
           <FeedbackState
             type="empty"
@@ -107,9 +108,9 @@ function OcCartPanel({
             />
           ))
         )}
-      </div>
+        </div>
 
-      <div className="gerar-oc-summary">
+        <div className="gerar-oc-summary">
         <span>Total de produtos</span>
         <strong>{safeCart.length}</strong>
         {canGenerate && (
@@ -122,8 +123,9 @@ function OcCartPanel({
             {generating ? "Gerando OC..." : "Gerar OC"}
           </button>
         )}
-      </div>
-    </Panel>
+        </div>
+      </Panel>
+    </div>
   );
 }
 

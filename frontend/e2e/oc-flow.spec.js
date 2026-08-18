@@ -18,18 +18,18 @@ async function logout(page) {
 
 test('cria, conta, finaliza e aprova uma OC', async ({ page }) => {
   await loginAs(page, admin);
-  await page.getByRole('button', { name: 'Gerar OC' }).click();
+  await page.getByLabel('Navegação principal').getByRole('button', { name: 'Gerar OC' }).click();
   await expect(page.getByRole('heading', { name: 'Gerar ordem de contagem' })).toBeVisible();
 
   await page.getByLabel('Buscar produto').fill('Dipirona 500mg');
   await page.getByRole('button', { name: 'Adicionar' }).click();
   await page.getByLabel('Estoquista responsável').selectOption({ label: 'Estoquista E2E Test Only' });
 
-  const createResponse = page.waitForResponse((response) => (
+  const createResponsePromise = page.waitForResponse((response) => (
     response.url().endsWith('/ocs/create-with-items') && response.request().method() === 'POST'
   ));
-  await page.getByRole('button', { name: 'Gerar OC' }).click();
-  const createdOc = await (await createResponse).json();
+  await page.getByRole('form', { name: 'Gerar ordem de contagem' }).getByRole('button', { name: 'Gerar OC' }).click();
+  const createdOc = await (await createResponsePromise).json();
   const ocCode = String(createdOc.id).padStart(4, '0');
 
   await expect(page.getByText('OC gerada com sucesso.')).toBeVisible();
@@ -37,7 +37,7 @@ test('cria, conta, finaliza e aprova uma OC', async ({ page }) => {
   await logout(page);
 
   await loginAs(page, estoquista);
-  await page.getByRole('button', { name: 'Minhas OCs' }).click();
+  await page.getByLabel('Navegação principal').getByRole('button', { name: 'Minhas OCs' }).click();
   const operationalCard = page.getByRole('article', { name: `OC ${ocCode}` });
   await expect(operationalCard).toBeVisible();
   await operationalCard.getByRole('button', { name: 'Abrir OC' }).click();
@@ -65,7 +65,7 @@ test('cria, conta, finaliza e aprova uma OC', async ({ page }) => {
   await logout(page);
 
   await loginAs(page, admin);
-  await page.getByRole('button', { name: 'Aprovação' }).click();
+  await page.getByLabel('Navegação principal').getByRole('button', { name: 'Aprovação' }).click();
   const approvalCard = page.getByRole('article', { name: `OC ${ocCode} aguardando aprovação` });
   await expect(approvalCard).toBeVisible();
   await approvalCard.getByRole('button', { name: 'Abrir detalhes' }).click();
@@ -78,7 +78,7 @@ test('cria, conta, finaliza e aprova uma OC', async ({ page }) => {
   await approveDialog.getByRole('button', { name: 'Aprovar' }).click();
   await expect(page.getByText('OC aprovada com sucesso.')).toBeVisible();
 
-  await page.getByRole('button', { name: 'Gestão de OCs' }).click();
+  await page.getByLabel('Navegação principal').getByRole('button', { name: 'Gestão de OCs' }).click();
   await page.getByLabel('Buscar').fill(ocCode);
   const finalCard = page.getByRole('article', { name: `OC ${ocCode}` });
   await expect(finalCard).toBeVisible();
