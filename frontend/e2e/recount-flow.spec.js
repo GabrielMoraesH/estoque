@@ -62,6 +62,7 @@ test('executa recontagem parcial e finaliza a OC', async ({ page }) => {
   await expect(page.getByText('0 de 4 localizações contadas')).toBeVisible();
   await countLocation(page, 'Dipirona 500mg', 'A1-01-02', '61', 'E2E-R1-DIP-01', '1 de 4 localizações contadas');
   await countLocation(page, 'Dipirona 500mg', 'A1-02-01', '60', 'E2E-R1-DIP-02', '2 de 4 localizações contadas');
+  await page.getByLabel('Produto da OC').selectOption({ label: 'Amoxicilina 500mg' });
   await countLocation(page, 'Amoxicilina 500mg', 'B2-03-01', '50', 'E2E-R1-AMO-01', '3 de 4 localizações contadas');
   await countLocation(page, 'Amoxicilina 500mg', 'B2-04-02', '35', 'E2E-R1-AMO-02', '4 de 4 localizações contadas');
   await finalizeCount(page);
