@@ -296,7 +296,7 @@ Frontend:
 
 ## CI
 
-O GitHub Actions executa o workflow de CI a cada `push` e `pull request`. Ele instala as dependências a partir dos lockfiles, executa os testes do backend, executa os testes do frontend sem modo watch e gera o build de produção do frontend. Um job separado inicializa um PostgreSQL 16 descartável, aplica as migrations em banco limpo, verifica uma segunda execução idempotente e executa a integração PostgreSQL. Esse job não executa seed e nunca usa banco ou credenciais de desenvolvimento/produção. O workflow não faz deploy nem auditoria de dependências.
+O GitHub Actions executa o workflow de CI a cada `push` e `pull request`. Ele instala as dependências a partir dos lockfiles, executa os testes do backend, executa os testes do frontend sem modo watch e gera o build de produção do frontend. Os mesmos jobs também geram coverage informativo e publicam os relatórios separados `backend-coverage` e `frontend-coverage` como artifacts por 7 dias; não há threshold de cobertura bloqueando o build ou o merge. Um job separado inicializa um PostgreSQL 16 descartável, aplica as migrations em banco limpo, verifica uma segunda execução idempotente e executa a integração PostgreSQL. O E2E com Playwright também permanece em job independente. Esses jobs não usam banco ou credenciais de desenvolvimento/produção. O workflow não faz deploy nem auditoria de dependências.
 
 ## Endpoints Principais do Backend
 
