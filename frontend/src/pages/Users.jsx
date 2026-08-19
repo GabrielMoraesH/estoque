@@ -14,7 +14,8 @@ import {
   INITIAL_USER_FORM,
   areUserFormsEqual,
   getEditableUser,
-  getEditableUsersById
+  getEditableUsersById,
+  getUserUpdatePayload
 } from "../components/users/userFormData";
 import usePermissions from "../hooks/usePermissions";
 import useUsers from "../hooks/useUsers";
@@ -214,7 +215,7 @@ function Users() {
     setSavingId(id);
 
     try {
-      const res = await editUser(id, payload);
+      const res = await editUser(id, getUserUpdatePayload(payload));
 
       if (res?.id) {
         showToast(feedbackMessages.users.updateSuccess);

@@ -35,6 +35,14 @@ export const getEditableUsersById = (users) =>
     return acc;
   }, {});
 
+export const getUserUpdatePayload = (form) => {
+  const { senha, ...payload } = form || {};
+
+  return typeof senha === "string" && senha.trim().length > 0
+    ? { ...payload, senha }
+    : payload;
+};
+
 export const areUserFormsEqual = (nextForm, currentForm) => (
   (nextForm?.nome || "") === (currentForm?.nome || "")
   && (nextForm?.login || "") === (currentForm?.login || "")
