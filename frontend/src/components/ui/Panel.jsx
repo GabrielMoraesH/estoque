@@ -7,10 +7,14 @@ function Panel({
   actions,
   className = "",
   headerClassName = "",
-  as: Component = "div"
+  as: Component = "div",
+  ...elementProps
 }) {
   return (
-    <Component className={`panel-card${className ? ` ${className}` : ""}`}>
+    <Component
+      {...elementProps}
+      className={`panel-card${className ? ` ${className}` : ""}`}
+    >
       {(title || subtitle || actions) && (
         <SectionHeader
           title={title}
