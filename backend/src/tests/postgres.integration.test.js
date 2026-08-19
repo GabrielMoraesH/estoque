@@ -40,7 +40,7 @@ async function createFixture() {
     `INSERT INTO user_empresas (user_id, empresa_id) VALUES
       ($1, $2), ($3, $4), ($5, $2), ($6, $2), ($7, $4)`,
     [byLogin['gestor-a-test'], empresaA.id, byLogin['gestor-b-test'], empresaB.id,
-      byLogin['anterior-test'], byLogin['novo-a-test'], byLogin['novo-b-test'], empresaB.id]
+      byLogin['anterior-test'], byLogin['novo-a-test'], byLogin['novo-b-test']]
   );
   return { empresaA, empresaB, byLogin };
 }
