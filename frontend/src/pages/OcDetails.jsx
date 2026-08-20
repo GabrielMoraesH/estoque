@@ -1,5 +1,5 @@
 import Layout from "../components/Layout";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
 import BackButton from "../components/BackButton";
 import DataState from "../components/ui/DataState";
@@ -33,6 +33,8 @@ function OcDetails() {
   const { user } = useAuth();
   const { canFinalizeOc, canViewCountingItem } = usePermissions();
   const { activeEmpresa } = useEmpresa();
+  const activeEmpresaIdRef = useRef(activeEmpresa?.id || null);
+  activeEmpresaIdRef.current = activeEmpresa?.id || null;
   const { fetchEstoquistaOCs, fetchOcItems, finalizeOc } = useOCs();
   const { fetchProdutos, getLocalizacoesPorProduto } = useProdutos();
   const { showToast } = useToast();
@@ -50,6 +52,8 @@ function OcDetails() {
     let isCurrentRequest = true;
 
     const loadItems = async () => {
+      setFinalizing(false);
+      setShowFinalizeConfirm(false);
       setLoading(true);
       setLoadError("");
       setOc(null);
@@ -173,16 +177,21 @@ function OcDetails() {
 
   const handleFinalize = useCallback(async () => {
     if (!readyToFinalize || finalizing) return;
+    const empresaIdAtStart = activeEmpresaIdRef.current;
     setFinalizing(true);
     try {
       await finalizeOc(id);
+      if (empresaIdAtStart !== activeEmpresaIdRef.current) return;
       showToast(feedbackMessages.oc.finalizeSuccess);
       navigate("/minhas-ocs", { replace: true });
     } catch (error) {
+      if (empresaIdAtStart !== activeEmpresaIdRef.current) return;
       showToast(getFeedbackErrorMessage(error, feedbackMessages.oc.finalizeError), "error");
     } finally {
-      setFinalizing(false);
-      setShowFinalizeConfirm(false);
+      if (empresaIdAtStart === activeEmpresaIdRef.current) {
+        setFinalizing(false);
+        setShowFinalizeConfirm(false);
+      }
     }
   }, [finalizeOc, finalizing, id, navigate, readyToFinalize, showToast]);
 

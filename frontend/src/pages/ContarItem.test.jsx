@@ -215,4 +215,21 @@ describe("ContarItem", () => {
       state: { from: "/minhas-ocs", selectedProduct: "Dipirona 500mg" }
     });
   });
+
+  it("ignora a resposta do salvamento depois da troca de empresa", async () => {
+    let activeEmpresa = { id: 10 };
+    let resolveSave;
+    useEmpresa.mockImplementation(() => ({ activeEmpresa }));
+    saveItemCount.mockReturnValue(new Promise((resolve) => { resolveSave = resolve; }));
+    const view = renderPage();
+    await fillValidForm();
+    await userEvent.click(screen.getByRole("button", { name: "Salvar contagem" }));
+    activeEmpresa = { id: 20 };
+    view.rerender(<ContarItem />);
+    showToast.mockClear();
+    resolveSave({ id: 900 });
+    await waitFor(() => expect(fetchOcItems).toHaveBeenCalledTimes(2));
+    expect(showToast).not.toHaveBeenCalled();
+    expect(navigate).not.toHaveBeenCalled();
+  });
 });

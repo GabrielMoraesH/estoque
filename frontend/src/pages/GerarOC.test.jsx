@@ -193,6 +193,23 @@ describe("GerarOC", () => {
     expect(screen.getByRole("button", { name: "Gerar OC" })).toBeEnabled();
   });
 
+  it("ignora sucesso da criacao quando a empresa muda durante a mutation", async () => {
+    let activeEmpresa = { id: 10 };
+    let resolveCreate;
+    useEmpresa.mockImplementation(() => ({ activeEmpresa }));
+    createOcWithProducts.mockReturnValue(new Promise((resolve) => { resolveCreate = resolve; }));
+    const view = renderPage();
+    await addDipironaAndSelectEstoquista(userEvent);
+    showToast.mockClear();
+    await userEvent.click(screen.getByRole("button", { name: "Gerar OC" }));
+    activeEmpresa = { id: 20 };
+    view.rerender(<GerarOC />);
+    resolveCreate({ id: 88 });
+    await waitFor(() => expect(fetchProdutos).toHaveBeenCalledTimes(2));
+    expect(showToast).not.toHaveBeenCalledWith("OC gerada com sucesso.");
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
   it("mostra o erro de carregamento quando produtos ou estoquistas falham", async () => {
     fetchProdutos.mockRejectedValue(new Error("Servico indisponivel"));
     renderPage();

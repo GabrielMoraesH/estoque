@@ -233,4 +233,20 @@ describe("OcDetails", () => {
     resolveCompanyB([{ ...oc, empresa_nome: "Empresa Beta" }]);
     expect(await screen.findByText("Empresa Beta")).toBeInTheDocument();
   });
+
+  it("nao navega nem mostra feedback da finalizacao depois da troca", async () => {
+    let resolveFinalize;
+    fetchOcItems.mockResolvedValue(items.map((item) => ({ ...item, status: "contado" })));
+    finalizeOc.mockReturnValue(new Promise((resolve) => { resolveFinalize = resolve; }));
+    const view = render(<OcDetails />);
+    await userEvent.click(await screen.findByRole("button", { name: "Finalizar contagem" }));
+    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Finalizar contagem" }));
+    activeEmpresa = { id: 20, nome: "Empresa Beta" };
+    view.rerender(<OcDetails />);
+    showToast.mockClear();
+    resolveFinalize({});
+    await waitFor(() => expect(fetchOcItems).toHaveBeenCalledTimes(2));
+    expect(navigate).not.toHaveBeenCalled();
+    expect(showToast).not.toHaveBeenCalled();
+  });
 });

@@ -34,6 +34,7 @@ function Aprovacao() {
   const { user } = useAuth();
   const { activeEmpresa } = useEmpresa();
   const activeEmpresaIdRef = useRef(activeEmpresa?.id || null);
+  activeEmpresaIdRef.current = activeEmpresa?.id || null;
   const location = useLocation();
   const navigate = useNavigate();
   const { canApproveOc, canRequestRecount } = usePermissions();
@@ -65,10 +66,6 @@ function Aprovacao() {
   const [loadingEstoquistas, setLoadingEstoquistas] = useState(false);
   const [selectedRecountEstoquistaId, setSelectedRecountEstoquistaId] = useState("");
 
-  useEffect(() => {
-    activeEmpresaIdRef.current = activeEmpresa?.id || null;
-  }, [activeEmpresa?.id]);
-
   const loadOCs = useCallback(async ({ showLoading = true } = {}) => {
     const empresaIdAtLoad = activeEmpresa?.id || null;
 
@@ -76,6 +73,8 @@ function Aprovacao() {
       setLoading(true);
     }
     setApprovalError("");
+    setApprovingId(null);
+    setRecounting(false);
     setSelectedOC(null);
     setSelectedItems([]);
     setItemsToRecount([]);
@@ -288,9 +287,11 @@ function Aprovacao() {
     }
 
     setApprovingId(id);
+    const empresaIdAtStart = activeEmpresaIdRef.current;
 
     try {
       await approveOc(id);
+      if (empresaIdAtStart !== activeEmpresaIdRef.current) return;
       showToast(feedbackMessages.approval.approveSuccess);
       setOcs((current) => asArray(current).filter((oc) => oc?.id !== id));
 
@@ -298,10 +299,13 @@ function Aprovacao() {
         resetSelectedOcState();
       }
     } catch (error) {
+      if (empresaIdAtStart !== activeEmpresaIdRef.current) return;
       showToast(getFeedbackErrorMessage(error, feedbackMessages.approval.approveError), "error");
     } finally {
-      setApprovingId(null);
-      setConfirmation(null);
+      if (empresaIdAtStart === activeEmpresaIdRef.current) {
+        setApprovingId(null);
+        setConfirmation(null);
+      }
     }
   }, [
     approveOc,
@@ -336,16 +340,19 @@ function Aprovacao() {
 
     setSelectedRecountEstoquistaId("");
     setLoadingEstoquistas(true);
+    const empresaIdAtStart = activeEmpresaIdRef.current;
 
     try {
       const data = await fetchEstoquistas({ nivel: 2 });
+      if (empresaIdAtStart !== activeEmpresaIdRef.current) return;
       setEstoquistas(asArray(data));
     } catch (error) {
+      if (empresaIdAtStart !== activeEmpresaIdRef.current) return;
       const message = getFeedbackErrorMessage(error, "Não foi possível carregar os estoquistas.");
       setEstoquistas([]);
       showToast(message, "error");
     } finally {
-      setLoadingEstoquistas(false);
+      if (empresaIdAtStart === activeEmpresaIdRef.current) setLoadingEstoquistas(false);
     }
   }, [
     canRequestRecount,
@@ -382,17 +389,23 @@ function Aprovacao() {
     }
 
     setRecounting(true);
+    const empresaIdAtStart = activeEmpresaIdRef.current;
 
     try {
       await sendOcItemsToRecount(ocId, itemIds, novoEstoquistaId);
+      if (empresaIdAtStart !== activeEmpresaIdRef.current) return;
       showToast(feedbackMessages.approval.recountSuccess);
       resetSelectedOcState();
       await loadOCs({ showLoading: false });
+      if (empresaIdAtStart !== activeEmpresaIdRef.current) return;
     } catch (error) {
+      if (empresaIdAtStart !== activeEmpresaIdRef.current) return;
       showToast(getFeedbackErrorMessage(error, feedbackMessages.approval.recountError), "error");
     } finally {
-      setRecounting(false);
-      setConfirmation(null);
+      if (empresaIdAtStart === activeEmpresaIdRef.current) {
+        setRecounting(false);
+        setConfirmation(null);
+      }
     }
   }, [
     canRequestRecount,

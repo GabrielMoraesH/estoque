@@ -63,6 +63,7 @@ describe("Aprovacao", () => {
   let fetchEstoquistas;
   let sendOcItemsToRecount;
   let fetchProdutos;
+  let activeEmpresa;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -79,7 +80,8 @@ describe("Aprovacao", () => {
     fetchProdutos = jest.fn().mockResolvedValue([]);
     useToast.mockReturnValue({ showToast });
     useAuth.mockReturnValue({ user: { id: 7, role: "gestor" } });
-    useEmpresa.mockReturnValue({ activeEmpresa: { id: 10 } });
+    activeEmpresa = { id: 10 };
+    useEmpresa.mockImplementation(() => ({ activeEmpresa }));
     usePermissions.mockReturnValue({ canApproveOc: true, canRequestRecount: true });
     useOCs.mockReturnValue({ approveOc, fetchApprovalOCs, fetchEstoquistas, fetchOcItems, sendOcItemsToRecount });
     useProdutos.mockReturnValue({ fetchProdutos, getLocalizacoesPorProduto: () => [] });
@@ -163,6 +165,20 @@ describe("Aprovacao", () => {
     expect(fetchEstoquistas).not.toHaveBeenCalled();
   });
 
+  it("suprime erro de aprovacao pertencente a empresa anterior", async () => {
+    let rejectApprove;
+    approveOc.mockReturnValue(new Promise((_resolve, reject) => { rejectApprove = reject; }));
+    const view = renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "Aprovar" }));
+    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Aprovar" }));
+    activeEmpresa = { id: 20 };
+    view.rerender(<Aprovacao />);
+    showToast.mockClear();
+    rejectApprove(new Error("Erro da Empresa Alfa"));
+    await waitFor(() => expect(fetchApprovalOCs).toHaveBeenCalledTimes(2));
+    expect(showToast).not.toHaveBeenCalled();
+  });
+
   it("envia somente o produto selecionado ao estoquista de nível 2", async () => {
     renderPage();
     await openDetails();
@@ -194,5 +210,24 @@ describe("Aprovacao", () => {
     await waitFor(() => expect(showToast).toHaveBeenCalledWith("Recontagem indisponível", "error"));
     expect(screen.getByRole("dialog", { name: "Enviar para recontagem" })).toBeInTheDocument();
     expect(getDipironaCheckbox()).toBeChecked();
+  });
+
+  it("nao faz refresh nem mostra sucesso de recontagem apos trocar de empresa", async () => {
+    let resolveRecount;
+    sendOcItemsToRecount.mockReturnValue(new Promise((resolve) => { resolveRecount = resolve; }));
+    const view = renderPage();
+    await openDetails();
+    await userEvent.click(getDipironaCheckbox());
+    await userEvent.click(screen.getByRole("button", { name: "Enviar para recontagem" }));
+    await screen.findByRole("option", { name: /Bruno/ });
+    await userEvent.selectOptions(screen.getByLabelText("Estoquista"), "22");
+    await userEvent.click(screen.getByRole("button", { name: "Enviar" }));
+    activeEmpresa = { id: 20 };
+    view.rerender(<Aprovacao />);
+    showToast.mockClear();
+    resolveRecount({});
+    await waitFor(() => expect(fetchApprovalOCs).toHaveBeenCalledTimes(2));
+    expect(showToast).not.toHaveBeenCalled();
+    expect(fetchApprovalOCs).toHaveBeenCalledTimes(2);
   });
 });

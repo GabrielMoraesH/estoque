@@ -64,12 +64,16 @@ function GerarOC() {
   const [loadError, setLoadError] = useState("");
   const [generating, setGenerating] = useState(false);
   const generatingRef = useRef(false);
+  const activeEmpresaIdRef = useRef(activeEmpresa?.id || null);
+  activeEmpresaIdRef.current = activeEmpresa?.id || null;
 
   useEffect(() => {
     const empresaIdAtLoad = activeEmpresa?.id || null;
     let isCurrentRequest = true;
 
     const loadData = async () => {
+      generatingRef.current = false;
+      setGenerating(false);
       setLoading(true);
       setLoadError("");
       setCart([]);
@@ -183,6 +187,7 @@ function GerarOC() {
       return;
     }
 
+    const empresaIdAtStart = activeEmpresaIdRef.current;
     generatingRef.current = true;
     setGenerating(true);
 
@@ -193,6 +198,8 @@ function GerarOC() {
         estoquista_id: selectedEstoquista,
         items: itemsToCreate
       });
+
+      if (empresaIdAtStart !== activeEmpresaIdRef.current) return;
 
       if (res?.id) {
         showToast(feedbackMessages.oc.generateSuccess);
@@ -209,10 +216,13 @@ function GerarOC() {
 
       showToast(feedbackMessages.oc.generateError, "error");
     } catch (error) {
+      if (empresaIdAtStart !== activeEmpresaIdRef.current) return;
       showToast(getGenerateOcErrorMessage(error), "error");
     } finally {
-      generatingRef.current = false;
-      setGenerating(false);
+      if (empresaIdAtStart === activeEmpresaIdRef.current) {
+        generatingRef.current = false;
+        setGenerating(false);
+      }
     }
   }, [
     canCreateOc,

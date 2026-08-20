@@ -1,5 +1,5 @@
 import Layout from "../components/Layout";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import useAuth from "../hooks/useAuth";
 import useEmpresa from "../hooks/useEmpresa";
@@ -33,6 +33,8 @@ function MinhasOCs() {
   const [loadError, setLoadError] = useState("");
   const [finalizingId, setFinalizingId] = useState(null);
   const [ocToFinalize, setOcToFinalize] = useState(null);
+  const activeEmpresaIdRef = useRef(activeEmpresa?.id || null);
+  activeEmpresaIdRef.current = activeEmpresa?.id || null;
 
   useEffect(() => {
     const empresaIdAtLoad = activeEmpresa?.id || null;
@@ -111,16 +113,21 @@ function MinhasOCs() {
     }
 
     setFinalizingId(oc.id);
+    const empresaIdAtStart = activeEmpresaIdRef.current;
 
     try {
       await finalizeOc(oc.id);
+      if (empresaIdAtStart !== activeEmpresaIdRef.current) return;
       showToast(feedbackMessages.oc.finalizeSuccess);
       setOcs((current) => asArray(current).filter((currentOc) => currentOc?.id !== oc.id));
     } catch (error) {
+      if (empresaIdAtStart !== activeEmpresaIdRef.current) return;
       showToast(getFeedbackErrorMessage(error, feedbackMessages.oc.finalizeError), "error");
     } finally {
-      setFinalizingId(null);
-      setOcToFinalize(null);
+      if (empresaIdAtStart === activeEmpresaIdRef.current) {
+        setFinalizingId(null);
+        setOcToFinalize(null);
+      }
     }
   }, [finalizeOc, finalizingId, ocToFinalize, showToast]);
   const safeOcs = getRenderableList(ocs);

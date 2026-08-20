@@ -1,6 +1,6 @@
 import Layout from "../components/Layout";
 import { Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import "../styles/contar.css";
 import "../styles/app-pages.css";
 import { useToast } from "../components/ToastProvider";
@@ -26,6 +26,8 @@ function ContarItem() {
   const location = useLocation();
   const { showToast } = useToast();
   const { activeEmpresa } = useEmpresa();
+  const activeEmpresaIdRef = useRef(activeEmpresa?.id || null);
+  activeEmpresaIdRef.current = activeEmpresa?.id || null;
   const { canCountOc } = usePermissions();
   const { fetchOcItems, saveItemCount } = useOCs();
   const [quantidade, setQuantidade] = useState("");
@@ -83,17 +85,22 @@ function ContarItem() {
       showToast(feedbackMessages.count.requiredFields, "info"); return;
     }
     setSaving(true);
+    const empresaIdAtStart = activeEmpresaIdRef.current;
     try {
       const countPayload = countTarget?.newModel
         ? { oc_id: ocId, oc_localizacao_id: countTarget.ocLocalizacaoId, quantidade: Number(quantidade), lote: lote.trim() }
         : { oc_id: ocId, item_id: itemId, quantidade: Number(quantidade), lote: lote.trim() };
       const response = await saveItemCount(countPayload);
+      if (empresaIdAtStart !== activeEmpresaIdRef.current) return;
       if (!response?.id) throw new Error(feedbackMessages.count.saveError);
       showToast(feedbackMessages.count.saveSuccess);
       navigate(`/oc/${ocId}`, { replace: true, state: { from: location.state?.from || "/minhas-ocs", selectedProduct: countTarget?.produto } });
     } catch (error) {
+      if (empresaIdAtStart !== activeEmpresaIdRef.current) return;
       showToast(getFeedbackErrorMessage(error, feedbackMessages.count.saveError), "error");
-    } finally { setSaving(false); }
+    } finally {
+      if (empresaIdAtStart === activeEmpresaIdRef.current) setSaving(false);
+    }
   }, [canCountOc, countTarget, isAlreadyCounted, isQuantidadeValida, itemId, loadingTarget, location.state?.from, lote, navigate, ocId, quantidade, saveItemCount, saving, showToast]);
 
   if (!canCountOc) return <Navigate to="/dashboard" replace />;

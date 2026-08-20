@@ -126,4 +126,23 @@ describe("MinhasOCs", () => {
     expect(screen.getByTestId("redirect")).toHaveTextContent("/dashboard");
     expect(fetchEstoquistaOCs).not.toHaveBeenCalled();
   });
+
+  it("ignora finalizacao antiga apos trocar de empresa", async () => {
+    let activeEmpresa = { id: 10, nome: "Empresa Alfa" };
+    let resolveFinalize;
+    useEmpresa.mockImplementation(() => ({ activeEmpresa }));
+    finalizeOc.mockReturnValue(new Promise((resolve) => { resolveFinalize = resolve; }));
+    const view = render(<MinhasOCs />);
+    const target = await screen.findByRole("article", { name: "OC 0077" });
+    await userEvent.click(within(target).getByRole("button", { name: "Finalizar contagem" }));
+    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Finalizar contagem" }));
+    activeEmpresa = { id: 20, nome: "Empresa Beta" };
+    view.rerender(<MinhasOCs />);
+    await screen.findByRole("article", { name: "OC 0077" });
+    showToast.mockClear();
+    resolveFinalize({});
+    await waitFor(() => expect(finalizeOc).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole("article", { name: "OC 0077" })).toBeInTheDocument();
+    expect(showToast).not.toHaveBeenCalled();
+  });
 });
