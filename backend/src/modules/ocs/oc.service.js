@@ -74,35 +74,6 @@ function createOcService({ repository, audit = noopAudit, csvSerializer = serial
     return { csv, filename, count: rows.length };
   }
 
-  function toEstoquistaItemDto(item) {
-    const {
-      saldo_sistema,
-      diferenca,
-      primeira_contagem_user_id,
-      primeira_contagem_usuario_nome,
-      primeira_contagem_em,
-      ultima_contagem_user_id,
-      ultima_contagem_usuario_nome,
-      ultima_contagem_em,
-      total_contagens,
-      contagens,
-      ...safeItem
-    } = item;
-
-    return safeItem;
-  }
-
-  function toEstoquistaProductDto(product) {
-    const {
-      saldo_sistema_snapshot,
-      saldo_sistema,
-      diferenca,
-      ...safeProduct
-    } = product;
-
-    return safeProduct;
-  }
-
   function assertValidCountQuantity(quantidade) {
     if (!Number.isInteger(quantidade) || quantidade < 0) {
       throw badRequest('Quantidade deve ser um numero inteiro maior ou igual a zero');
@@ -125,25 +96,6 @@ function createOcService({ repository, audit = noopAudit, csvSerializer = serial
     }
   }
 
-  const {
-    listMyGestorOcs,
-    listOcsByGestor,
-    listMyEstoquistaOcs,
-    listOcsByEstoquista,
-    getDashboardSummary,
-    listApprovalForAdmin,
-    listMyApprovalOcs,
-    listApprovalForGestor
-  } = createOcQueryService({
-    repository,
-    isAdmin,
-    isGestor,
-    isEstoquista,
-    forbidden,
-    assertSameUserOrAdmin,
-    assignmentStatus: ASSIGNMENT_STATUS
-  });
-
   async function getOcOrFail(ocId, repo = repository, options = {}) {
     const oc = await repo.findOcById(ocId, options);
 
@@ -159,6 +111,30 @@ function createOcService({ repository, audit = noopAudit, csvSerializer = serial
       throw notFound('OC nao encontrada');
     }
   }
+
+  const {
+    listMyGestorOcs,
+    listOcsByGestor,
+    listMyEstoquistaOcs,
+    listOcsByEstoquista,
+    getDashboardSummary,
+    listApprovalForAdmin,
+    listMyApprovalOcs,
+    listApprovalForGestor,
+    listOcItems,
+    getOcHistoryDetails
+  } = createOcQueryService({
+    repository,
+    isAdmin,
+    isGestor,
+    isEstoquista,
+    forbidden,
+    assertSameUserOrAdmin,
+    getOcOrFail,
+    assertOcEmpresa,
+    assertOcVisibleToUser,
+    assignmentStatus: ASSIGNMENT_STATUS
+  });
 
   async function getOcItemOrFail({ ocId, itemId }, repo = repository, options = {}) {
     const item = await repo.findItemById(itemId, options);
@@ -899,115 +875,6 @@ function createOcService({ repository, audit = noopAudit, csvSerializer = serial
       changed: result.changed,
       assignment: result.assignment,
       progresso: result.progress
-    };
-  }
-
-  async function listOcItems({ user, empresaId, ocId }) {
-    const oc = await getOcOrFail(ocId);
-    assertOcEmpresa(oc, empresaId);
-
-    if (await repository.ocHasNewModel(ocId)) {
-      if (!isEstoquista(user)) {
-        assertOcVisibleToUser(user, oc);
-        return repository.listAdminApprovalProducts({ ocId });
-      }
-
-      const assignment = await repository.findActiveAssignmentForUser({ ocId, estoquistaId: user.id });
-
-      if (!assignment) {
-        throw forbidden('Voce nao tem permissao para acessar esta OC');
-      }
-
-      const assignmentId = assignment.id;
-      const products = await repository.listOperationalProducts({ ocId, assignmentId });
-      const items = [];
-
-      for (const product of products) {
-        const locations = await repository.listOperationalLocationsByProduct({
-          ocProdutoId: product.id,
-          assignmentId
-        });
-
-        for (const location of locations) {
-          items.push(toEstoquistaProductDto({
-            id: location.id,
-            oc_id: Number(ocId),
-            oc_produto_id: product.id,
-            oc_localizacao_id: location.id,
-            produto: product.descricao,
-            descricao: product.descricao,
-            endereco: location.endereco,
-            codigo_barras_snapshot: location.codigo_barras_snapshot || null,
-            validade_snapshot: location.validade_snapshot || null,
-            location: {
-              endereco: location.endereco,
-              codigo_barras: location.codigo_barras_snapshot || null,
-              validade: location.validade_snapshot || null
-            },
-            status: location.status,
-            saldo_contado: location.quantidade ?? null,
-            quantidade: location.quantidade ?? null,
-            lote: location.lote ?? null,
-            total_localizacoes: product.total_localizacoes,
-            localizacoes_contadas: product.localizacoes_contadas,
-            new_model: true
-          }));
-        }
-      }
-
-      return items;
-    }
-
-    assertOcVisibleToUser(user, oc);
-
-    const items = await repository.listItems(ocId);
-
-    if (isEstoquista(user)) {
-      return items.map(toEstoquistaItemDto);
-    }
-
-    return items;
-  }
-
-  async function getOcHistoryDetails({ user, empresaId, ocId }) {
-    if (!isAdmin(user) && !isGestor(user)) {
-      throw forbidden('Voce nao tem permissao para acessar este historico');
-    }
-
-    const oc = await getOcOrFail(ocId);
-    assertOcEmpresa(oc, empresaId);
-    const listRows = await repository.listByGestor({ empresaId, ocId });
-    const summary = listRows.find((row) => Number(row.id) === Number(ocId));
-
-    if (await repository.ocHasNewModel(ocId)) {
-      const [products, assignments] = await Promise.all([
-        repository.listAdminApprovalProducts({ ocId }),
-        repository.listOcAssignments({ ocId })
-      ]);
-      return { oc: summary || oc, modelo: 'novo', produtos: products, ciclos: assignments };
-    }
-
-    const items = await repository.listItems(ocId);
-    return {
-      oc: summary || oc,
-      modelo: 'legado',
-      produtos: items.map((item) => ({
-        ...item,
-        oc_produto_id: null,
-        produto: item.produto,
-        descricao: item.produto,
-        saldo_sistema_snapshot: item.saldo_sistema,
-        saldo_contado_vigente: item.saldo_contado,
-        localizacoes: [{
-          id: item.id,
-          endereco: item.endereco,
-          saldo_contado: item.saldo_contado,
-          lote: item.lote,
-          contagens: item.contagens || []
-        }],
-        new_model: false
-      })),
-      ciclos: []
     };
   }
 
