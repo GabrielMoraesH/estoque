@@ -2892,6 +2892,96 @@ describe('OcService unitario com repository mockado', () => {
       });
   });
 
+  it('caracteriza historico administrativo legado com summary, produtos e contagens preservados', async () => {
+    const oc = { id: 56, codigo: 'OC-LEGADA', empresa_id: 1, gestor_id: 12 };
+    const summary = { id: 56, codigo: 'OC-LEGADA', empresa_id: 1, criador_nome: 'Gestora Legada' };
+    const items = [
+      {
+        id: 701,
+        item_id: 1701,
+        oc_id: 56,
+        codigo: 'MED-ALFA',
+        produto: 'Medicamento Alfa',
+        endereco: 'A-01-02',
+        saldo_sistema: 80,
+        saldo_contado: 73,
+        lote: 'LOTE-ALFA',
+        contagens: [{ quantidade: 73, lote: 'LOTE-ALFA', usuario_nome: 'Ana', created_at: '2026-03-10T14:00:00.000Z' }]
+      },
+      {
+        id: 702,
+        item_id: 1702,
+        oc_id: 56,
+        codigo: 'MED-BETA',
+        produto: 'Medicamento Beta',
+        endereco: 'B-03-04',
+        saldo_sistema: 41,
+        saldo_contado: 38,
+        lote: 'LOTE-BETA',
+        contagens: [{ quantidade: 38, lote: 'LOTE-BETA', usuario_nome: 'Bruno', created_at: '2026-03-11T15:30:00.000Z' }]
+      }
+    ];
+    const repository = createRepositoryMock({
+      findOcById: jest.fn().mockResolvedValue(oc),
+      listByGestor: jest.fn().mockResolvedValue([summary]),
+      ocHasNewModel: jest.fn().mockResolvedValue(false),
+      listItems: jest.fn().mockResolvedValue(items)
+    });
+    const { service } = createService({ repository });
+
+    const result = await service.getOcHistoryDetails({ user: gestor, empresaId: 1, ocId: 56 });
+
+    expect(result.oc).toEqual(summary);
+    expect(result.modelo).toBe('legado');
+    expect(result.ciclos).toEqual([]);
+    expect(result.produtos).toHaveLength(2);
+    expect(result.produtos).toEqual([
+      expect.objectContaining({
+        id: 701,
+        item_id: 1701,
+        codigo: 'MED-ALFA',
+        produto: 'Medicamento Alfa',
+        descricao: 'Medicamento Alfa',
+        oc_produto_id: null,
+        saldo_sistema_snapshot: 80,
+        saldo_contado_vigente: 73,
+        new_model: false,
+        localizacoes: [{
+          id: 701,
+          endereco: 'A-01-02',
+          saldo_contado: 73,
+          lote: 'LOTE-ALFA',
+          contagens: [{ quantidade: 73, lote: 'LOTE-ALFA', usuario_nome: 'Ana', created_at: '2026-03-10T14:00:00.000Z' }]
+        }]
+      }),
+      expect.objectContaining({
+        id: 702,
+        item_id: 1702,
+        codigo: 'MED-BETA',
+        descricao: 'Medicamento Beta',
+        oc_produto_id: null,
+        saldo_sistema_snapshot: 41,
+        saldo_contado_vigente: 38,
+        new_model: false,
+        localizacoes: [expect.objectContaining({ id: 702, endereco: 'B-03-04', lote: 'LOTE-BETA' })]
+      })
+    ]);
+  });
+
+  it('usa a propria OC no historico legado quando o summary nao existe', async () => {
+    const oc = { id: 57, codigo: 'OC-SEM-SUMMARY', empresa_id: 1, gestor_id: 13 };
+    const repository = createRepositoryMock({
+      findOcById: jest.fn().mockResolvedValue(oc),
+      listByGestor: jest.fn().mockResolvedValue([{ id: 99, empresa_id: 1 }]),
+      ocHasNewModel: jest.fn().mockResolvedValue(false),
+      listItems: jest.fn().mockResolvedValue([])
+    });
+    const { service } = createService({ repository });
+
+    await expect(service.getOcHistoryDetails({ user: admin, empresaId: 1, ocId: 57 }))
+      .resolves.toMatchObject({ oc, modelo: 'legado', produtos: [], ciclos: [] });
+  });
+
   it('bloqueia estoquista e isola historico administrativo por empresa', async () => {
     const repository = createRepositoryMock({
       findOcById: jest.fn().mockResolvedValue({ id: 55, empresa_id: 2 })
