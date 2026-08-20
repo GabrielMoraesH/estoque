@@ -9,6 +9,7 @@ const {
   assertItemStatus
 } = require('./ocStatus');
 const { filterExportRows, getOperationalExportStatus, safeFilenamePart, serializeCsv } = require('./ocExport');
+const { createOcQueryService } = require('./services/oc-query.service');
 
 const noopAudit = {
   async logAction() {}
@@ -123,6 +124,23 @@ function createOcService({ repository, audit = noopAudit, csvSerializer = serial
       throw forbidden('Voce nao tem permissao para acessar dados de outro usuario');
     }
   }
+
+  const {
+    listMyGestorOcs,
+    listOcsByGestor,
+    listMyEstoquistaOcs,
+    listOcsByEstoquista,
+    listApprovalForAdmin,
+    listMyApprovalOcs,
+    listApprovalForGestor
+  } = createOcQueryService({
+    repository,
+    isAdmin,
+    isGestor,
+    isEstoquista,
+    forbidden,
+    assertSameUserOrAdmin
+  });
 
   async function getOcOrFail(ocId, repo = repository, options = {}) {
     const oc = await repo.findOcById(ocId, options);
@@ -622,43 +640,6 @@ function createOcService({ repository, audit = noopAudit, csvSerializer = serial
     return { ...oc, qtd: groupedProducts.length };
   }
 
-  function listOcsByGestorInternal({ empresaId }) {
-    return repository.listByGestor({ empresaId });
-  }
-
-  async function listMyGestorOcs({ user, empresaId }) {
-    if (!isGestor(user)) {
-      throw forbidden('Voce nao tem permissao para acessar esta listagem');
-    }
-
-    return listOcsByGestorInternal({ empresaId });
-  }
-
-  async function listOcsByGestor({ user, gestorId, empresaId }) {
-    if (!isAdmin(user) && !isGestor(user)) {
-      throw forbidden('Voce nao tem permissao para acessar esta listagem');
-    }
-
-    void gestorId;
-    return listOcsByGestorInternal({ empresaId });
-  }
-
-  function listOcsByEstoquistaInternal({ estoquistaId, empresaId }) {
-    return repository.listByEstoquista({
-      estoquistaId,
-      empresaId,
-      itemStatus: {
-        approved: ITEM_STATUS.APPROVED,
-        counted: ITEM_STATUS.COUNTED
-      },
-      ocStatus: {
-        open: OC_STATUS.OPEN,
-        waitingApproval: OC_STATUS.WAITING_APPROVAL,
-        finalized: OC_STATUS.FINALIZED
-      }
-    });
-  }
-
   function isRecountDashboardRow(row) {
     return (row?.active_assignment_status === ASSIGNMENT_STATUS.ACTIVE
       && row?.active_assignment_fase === 'recontagem')
@@ -799,60 +780,6 @@ function createOcService({ repository, audit = noopAudit, csvSerializer = serial
       },
       proximas_ocs: tasks.slice(0, 5)
     };
-  }
-
-  async function listMyEstoquistaOcs({ user, empresaId }) {
-    if (!isEstoquista(user)) {
-      throw forbidden('Voce nao tem permissao para acessar esta listagem');
-    }
-
-    return listOcsByEstoquistaInternal({ estoquistaId: user.id, empresaId });
-  }
-
-  async function listOcsByEstoquista({ user, estoquistaId, empresaId }) {
-    if (!isAdmin(user) && !isEstoquista(user)) {
-      throw forbidden('Voce nao tem permissao para acessar esta listagem');
-    }
-
-    assertSameUserOrAdmin(user, estoquistaId);
-    return listOcsByEstoquistaInternal({ estoquistaId, empresaId });
-  }
-
-  function listApprovalForAdmin({ empresaId }) {
-    return repository.listApprovalForAdmin({
-      empresaId,
-      openStatus: OC_STATUS.OPEN,
-      waitingApprovalStatus: OC_STATUS.WAITING_APPROVAL
-    });
-  }
-
-  function listApprovalForGestorInternal({ empresaId }) {
-    return repository.listApprovalForGestor({
-      empresaId,
-      openStatus: OC_STATUS.OPEN,
-      waitingApprovalStatus: OC_STATUS.WAITING_APPROVAL
-    });
-  }
-
-  async function listMyApprovalOcs({ user, empresaId }) {
-    if (isAdmin(user)) {
-      return listApprovalForAdmin({ empresaId });
-    }
-
-    if (!isGestor(user)) {
-      throw forbidden('Voce nao tem permissao para acessar esta listagem');
-    }
-
-    return listApprovalForGestorInternal({ empresaId });
-  }
-
-  async function listApprovalForGestor({ user, gestorId, empresaId }) {
-    if (!isAdmin(user) && !isGestor(user)) {
-      throw forbidden('Voce nao tem permissao para acessar esta listagem');
-    }
-
-    assertSameUserOrAdmin(user, gestorId);
-    return listApprovalForGestorInternal({ empresaId });
   }
 
   async function approveOc({ user, empresaId, ocId, auditContext }) {
