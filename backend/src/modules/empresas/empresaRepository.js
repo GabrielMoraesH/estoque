@@ -2,6 +2,21 @@ const pool = require('../../config/db');
 
 function createEmpresaRepository(db = pool) {
   return {
+    async withTransaction(callback) {
+      const client = await db.connect();
+      try {
+        await client.query('BEGIN');
+        const result = await callback(createEmpresaRepository(client), client);
+        await client.query('COMMIT');
+        return result;
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+
     async listAdmin() {
       const result = await db.query(
         `SELECT empresas.id, empresas.codigo, empresas.nome, empresas.ativo,

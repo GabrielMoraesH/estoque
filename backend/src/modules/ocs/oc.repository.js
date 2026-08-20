@@ -13,7 +13,7 @@ function createOcRepository(db = pool) {
 
       try {
         await client.query('BEGIN');
-        const result = await callback(transactionRepository);
+        const result = await callback(transactionRepository, client);
         await client.query('COMMIT');
         return result;
       } catch (err) {

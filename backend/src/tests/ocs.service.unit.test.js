@@ -3090,7 +3090,7 @@ describe('OcService unitario com repository mockado', () => {
     await expect(service.reassignAssignment({ user: { id: 1, role: 'admin' }, empresaId: 1, ocId: 10, assignmentId, novoEstoquistaId: 33 })).rejects.toMatchObject({ statusCode: 404 });
   });
 
-  it('detecta conflito concorrente e nao audita; falha da auditoria nao desfaz sucesso', async () => {
+  it('detecta conflito concorrente e propaga falha da auditoria obrigatoria', async () => {
     const base = {
       findOcById: jest.fn().mockResolvedValue({ id: 10, empresa_id: 1 }),
       findUserById: jest.fn(async (id) => id === 1 ? { id: 1, role: 'admin', ativo: true } : { id: 33, role: 'estoquista', ativo: true, nivel_estoquista: 1 }),
@@ -3105,7 +3105,7 @@ describe('OcService unitario com repository mockado', () => {
 
     const successRepository = createRepositoryMock({ ...base, reassignActiveAssignment: jest.fn().mockResolvedValue({ id: 500, oc_id: 10, ciclo: 1, fase: 'contagem', status: 'ativo', estoquista_id: 33 }) });
     const failingAudit = { logAction: jest.fn().mockRejectedValue(new Error('audit unavailable')) };
-    await expect(createOcService({ repository: successRepository, audit: failingAudit }).reassignAssignment({ user: { id: 1, role: 'admin' }, empresaId: 1, ocId: 10, assignmentId: 500, novoEstoquistaId: 33 })).resolves.toMatchObject({ changed: true });
+    await expect(createOcService({ repository: successRepository, audit: failingAudit }).reassignAssignment({ user: { id: 1, role: 'admin' }, empresaId: 1, ocId: 10, assignmentId: 500, novoEstoquistaId: 33 })).rejects.toThrow('audit unavailable');
     expect(failingAudit.logAction).toHaveBeenCalledTimes(1);
   });
 });

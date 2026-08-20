@@ -22,6 +22,26 @@ describe('Auditoria', () => {
     expect(logger.error).toHaveBeenCalledWith('Erro ao registrar auditoria');
   });
 
+  it('propaga falha quando a auditoria participa de uma transacao', async () => {
+    const error = new Error('audit transaction failed');
+    const transactionClient = { query: jest.fn() };
+    const service = createAuditService({
+      repository: { create: jest.fn().mockRejectedValue(error) },
+      loggerDependency: { error: jest.fn() }
+    });
+    await expect(service.logAction({
+      action: 'oc.created', entityType: 'oc', transactionClient
+    })).rejects.toBe(error);
+  });
+
+  it('usa exatamente o client transacional recebido no repository', async () => {
+    const transactionClient = { query: jest.fn() };
+    const repository = { create: jest.fn().mockResolvedValue() };
+    const service = createAuditService({ repository, loggerDependency: { error: jest.fn() } });
+    await service.logAction({ action: 'oc.created', entityType: 'oc', transactionClient });
+    expect(repository.create).toHaveBeenCalledWith(expect.objectContaining({ action: 'oc.created' }), transactionClient);
+  });
+
   it('pagina e ordena deterministicamente usando apenas parametros SQL', async () => {
     const db = { query: jest.fn().mockResolvedValueOnce({ rows: [{ total: 1 }] }).mockResolvedValueOnce({ rows: [{ id: 1 }] }) };
     const result = await createAuditRepository(db).list({ page: 2, limit: 25, search: "x' OR 1=1 --", action: 'oc.approved' });

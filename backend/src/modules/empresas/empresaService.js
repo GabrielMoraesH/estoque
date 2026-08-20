@@ -6,13 +6,9 @@ const auditService = require('../audit/auditService');
 const noopAudit = { async logAction() {} };
 
 function createEmpresaService({ repository = empresaRepository, audit = noopAudit } = {}) {
-  async function logAudit(event) {
-    try {
-      await audit.logAction(event);
-    } catch {
-      // Auditoria administrativa nao pode desfazer a operacao principal.
-    }
-  }
+  const withTransaction = repository.withTransaction
+    ? repository.withTransaction.bind(repository)
+    : async (callback) => callback(repository, {});
   async function listEmpresas() {
     return repository.listAdmin();
   }
@@ -23,16 +19,14 @@ function createEmpresaService({ repository = empresaRepository, audit = noopAudi
 
   async function createEmpresa({ codigo, nome, actor, auditContext }) {
     try {
-      const empresa = await repository.create({ codigo, nome });
-      await logAudit({
-        user: actor,
-        action: 'empresa.created',
-        entityType: 'empresa',
-        entityId: empresa.id,
-        metadata: { empresa_id: empresa.id, codigo: empresa.codigo },
-        auditContext
+      return await withTransaction(async (transactionRepository, transactionClient) => {
+        const empresa = await transactionRepository.create({ codigo, nome });
+        await audit.logAction({
+          user: actor, action: 'empresa.created', entityType: 'empresa', entityId: empresa.id,
+          metadata: { empresa_id: empresa.id, codigo: empresa.codigo }, auditContext, transactionClient
+        });
+        return empresa;
       });
-      return empresa;
     } catch (error) {
       if (error.code === '23505') {
         throw new AppError('Codigo de empresa ja existe', 409, ERROR_CODES.CONFLICT);
@@ -51,16 +45,15 @@ function createEmpresaService({ repository = empresaRepository, audit = noopAudi
       return previous;
     }
 
-    const empresa = await repository.updateName({ id, nome });
-    await logAudit({
-      user: actor,
-      action: 'empresa.updated',
-      entityType: 'empresa',
-      entityId: empresa.id,
-      metadata: { empresa_id: empresa.id, codigo: empresa.codigo, campos_alterados: previous.nome === empresa.nome ? [] : ['nome'] },
-      auditContext
+    return withTransaction(async (transactionRepository, transactionClient) => {
+      const empresa = await transactionRepository.updateName({ id, nome });
+      await audit.logAction({
+        user: actor, action: 'empresa.updated', entityType: 'empresa', entityId: empresa.id,
+        metadata: { empresa_id: empresa.id, codigo: empresa.codigo, campos_alterados: ['nome'] },
+        auditContext, transactionClient
+      });
+      return empresa;
     });
-    return empresa;
   }
 
   async function updateEmpresaStatus({ id, ativo, actor, auditContext }) {
@@ -73,16 +66,16 @@ function createEmpresaService({ repository = empresaRepository, audit = noopAudi
       return previous;
     }
 
-    const empresa = await repository.updateStatus({ id, ativo });
-    await logAudit({
-      user: actor,
-      action: ativo ? 'empresa.reactivated' : 'empresa.deactivated',
-      entityType: 'empresa',
-      entityId: empresa.id,
-      metadata: { empresa_id: empresa.id, codigo: empresa.codigo, status_anterior: previous.ativo, status_novo: empresa.ativo },
-      auditContext
+    return withTransaction(async (transactionRepository, transactionClient) => {
+      const empresa = await transactionRepository.updateStatus({ id, ativo });
+      await audit.logAction({
+        user: actor, action: ativo ? 'empresa.reactivated' : 'empresa.deactivated',
+        entityType: 'empresa', entityId: empresa.id,
+        metadata: { empresa_id: empresa.id, codigo: empresa.codigo, status_anterior: previous.ativo, status_novo: empresa.ativo },
+        auditContext, transactionClient
+      });
+      return empresa;
     });
-    return empresa;
   }
 
   async function getUserEmpresaIds(userId) {

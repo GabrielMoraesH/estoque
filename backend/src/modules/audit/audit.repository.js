@@ -11,8 +11,9 @@ function createAuditRepository(db = pool) {
       metadata,
       ipAddress,
       userAgent
-    }) {
-      await db.query(
+    }, transactionClient = null) {
+      const queryExecutor = transactionClient || db;
+      await queryExecutor.query(
         `INSERT INTO audit_logs (
            user_id,
            user_role,

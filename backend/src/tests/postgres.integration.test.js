@@ -1,6 +1,7 @@
 const pool = require('../config/db');
 const { createOcRepository } = require('../modules/ocs/oc.repository');
 const { createEmpresaRepository } = require('../modules/empresas/empresaRepository');
+const { createAuditService } = require('../modules/audit/auditService');
 
 if (process.env.NODE_ENV !== 'test' || !process.env.DB_NAME?.endsWith('_test')) {
   throw new Error('PostgreSQL integration tests require NODE_ENV=test and a DB_NAME ending in _test');
@@ -94,6 +95,69 @@ async function countLocation(repository, created, index, userId, quantidade, lot
 describe('PostgreSQL integration', () => {
   beforeEach(resetDatabase);
   afterAll(() => pool.end());
+
+  it('commits domain mutation and audit log in the same PostgreSQL transaction', async () => {
+    const fixture = await createFixture();
+    const repository = createOcRepository(pool);
+    const audit = createAuditService({ loggerDependency: { error: jest.fn() } });
+    const identity = await repository.getNextIdentity();
+    await repository.withTransaction(async (transactionRepository, transactionClient) => {
+      await transactionRepository.createOc({
+        id: identity.nextId, codigo: identity.codigo,
+        gestorId: fixture.byLogin['gestor-a-test'], estoquistaId: fixture.byLogin['anterior-test'],
+        empresaId: fixture.empresaA.id, status: OC_STATUS.open
+      });
+      await audit.logAction({
+        user: { id: fixture.byLogin['gestor-a-test'], role: 'gestor' },
+        action: 'oc.created', entityType: 'oc', entityId: identity.nextId,
+        metadata: { empresa_id: fixture.empresaA.id }, transactionClient
+      });
+    });
+    await expect(repository.findOcById(identity.nextId)).resolves.toBeTruthy();
+    const logs = await pool.query("SELECT action FROM audit_logs WHERE entity_type = 'oc' AND entity_id = $1", [String(identity.nextId)]);
+    expect(logs.rows).toEqual([{ action: 'oc.created' }]);
+  });
+
+  it('rolls back domain mutation when the PostgreSQL audit insert fails', async () => {
+    const fixture = await createFixture();
+    const repository = createOcRepository(pool);
+    const audit = createAuditService({ loggerDependency: { error: jest.fn() } });
+    const identity = await repository.getNextIdentity();
+    await expect(repository.withTransaction(async (transactionRepository, transactionClient) => {
+      await transactionRepository.createOc({
+        id: identity.nextId, codigo: identity.codigo,
+        gestorId: fixture.byLogin['gestor-a-test'], estoquistaId: fixture.byLogin['anterior-test'],
+        empresaId: fixture.empresaA.id, status: OC_STATUS.open
+      });
+      await audit.logAction({ action: null, entityType: 'oc', entityId: identity.nextId, transactionClient });
+    })).rejects.toMatchObject({ code: '23502' });
+    await expect(repository.findOcById(identity.nextId)).resolves.toBeNull();
+    const logs = await pool.query('SELECT COUNT(*)::int AS total FROM audit_logs WHERE entity_id = $1', [String(identity.nextId)]);
+    expect(logs.rows[0].total).toBe(0);
+  });
+
+  it('does not persist an audit log when the domain mutation fails', async () => {
+    const fixture = await createFixture();
+    const repository = createOcRepository(pool);
+    const audit = createAuditService({ loggerDependency: { error: jest.fn() } });
+    const identity = await repository.getNextIdentity();
+    await expect(repository.withTransaction(async (transactionRepository, transactionClient) => {
+      await transactionRepository.createOc({
+        id: identity.nextId, codigo: identity.codigo,
+        gestorId: fixture.byLogin['gestor-a-test'], estoquistaId: fixture.byLogin['anterior-test'],
+        empresaId: fixture.empresaA.id, status: OC_STATUS.open
+      });
+      await transactionRepository.createOc({
+        id: identity.nextId, codigo: identity.codigo,
+        gestorId: fixture.byLogin['gestor-a-test'], estoquistaId: fixture.byLogin['anterior-test'],
+        empresaId: fixture.empresaA.id, status: OC_STATUS.open
+      });
+      await audit.logAction({ action: 'oc.created', entityType: 'oc', entityId: identity.nextId, transactionClient });
+    })).rejects.toMatchObject({ code: '23505' });
+    await expect(repository.findOcById(identity.nextId)).resolves.toBeNull();
+    const logs = await pool.query('SELECT COUNT(*)::int AS total FROM audit_logs WHERE entity_id = $1', [String(identity.nextId)]);
+    expect(logs.rows[0].total).toBe(0);
+  });
 
   it('has all migrations registered and the final schema constraint', async () => {
     const migrations = await pool.query('SELECT version FROM schema_migrations ORDER BY version');

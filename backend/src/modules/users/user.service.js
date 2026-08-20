@@ -130,7 +130,7 @@ function createUserService({
       const nivelEstoquista = normalizeNivelEstoquista(role, nivel_estoquista);
       const hashedPassword = await passwordHasher.hash(senha, security.bcryptSaltRounds);
 
-      const user = await repository.withTransaction(async (transactionRepository) => {
+      const user = await repository.withTransaction(async (transactionRepository, transactionClient) => {
         await assertActiveEmpresas(transactionRepository, empresaIds);
 
         const createdUser = await transactionRepository.create({
@@ -142,19 +142,13 @@ function createUserService({
         });
 
         await transactionRepository.replaceUserEmpresas(createdUser.id, empresaIds);
-        return transactionRepository.findSummaryById(createdUser.id);
-      });
-
-      await audit.logAction({
-        user: actor,
-        action: 'user.created',
-        entityType: 'user',
-        entityId: user.id,
-        metadata: {
-          created_user: user,
-          empresa_ids: empresaIds
-        },
-        auditContext
+        const createdUserSummary = await transactionRepository.findSummaryById(createdUser.id);
+        await audit.logAction({
+          user: actor, action: 'user.created', entityType: 'user', entityId: createdUserSummary.id,
+          metadata: { created_user: createdUserSummary, empresa_ids: empresaIds },
+          auditContext, transactionClient
+        });
+        return createdUserSummary;
       });
 
       return user;
@@ -252,7 +246,7 @@ function createUserService({
         : null;
       const nivelEstoquista = normalizeNivelEstoquista(role, nivel_estoquista);
 
-      const updatedUser = await repository.withTransaction(async (transactionRepository) => {
+      const updatedUser = await repository.withTransaction(async (transactionRepository, transactionClient) => {
         if (empresaIds) {
           await assertAssignableEmpresas(transactionRepository, empresaIds, currentUser);
         }
@@ -274,26 +268,18 @@ function createUserService({
           await transactionRepository.replaceUserEmpresas(id, empresaIds);
         }
 
-        return transactionRepository.findSummaryById(id);
-      });
-
-      const metadata = {
-        previous_user: currentUser,
-        updated_user: updatedUser,
-        password_changed: passwordChanged
-      };
-
-      if (empresaIds) {
-        metadata.empresa_ids = empresaIds;
-      }
-
-      await audit.logAction({
-        user: actor,
-        action: 'user.updated',
-        entityType: 'user',
-        entityId: updatedUser.id,
-        metadata,
-        auditContext
+        const updatedUserSummary = await transactionRepository.findSummaryById(id);
+        const metadata = {
+          previous_user: currentUser,
+          updated_user: updatedUserSummary,
+          password_changed: passwordChanged
+        };
+        if (empresaIds) metadata.empresa_ids = empresaIds;
+        await audit.logAction({
+          user: actor, action: 'user.updated', entityType: 'user', entityId: updatedUserSummary.id,
+          metadata, auditContext, transactionClient
+        });
+        return updatedUserSummary;
       });
 
       return updatedUser;
@@ -322,26 +308,22 @@ function createUserService({
       throw notFound('Usuario nao encontrado');
     }
 
-    const updatedUser = await repository.withTransaction(async (transactionRepository) => {
+    const updatedUser = await repository.withTransaction(async (transactionRepository, transactionClient) => {
       const savedUser = await transactionRepository.updateStatus({ id, ativo });
 
       if (!savedUser) {
         throw notFound('Usuario nao encontrado');
       }
 
-      return transactionRepository.findSummaryById(id);
-    });
-
-    await audit.logAction({
-      user: actor,
-      action: ativo ? 'user.reactivated' : 'user.deactivated',
-      entityType: 'user',
-      entityId: updatedUser.id,
-      metadata: {
-        target_user_id: updatedUser.id,
-        target_login: updatedUser.login
-      },
-      auditContext
+      const updatedUserSummary = await transactionRepository.findSummaryById(id);
+      await audit.logAction({
+        user: actor,
+        action: ativo ? 'user.reactivated' : 'user.deactivated',
+        entityType: 'user', entityId: updatedUserSummary.id,
+        metadata: { target_user_id: updatedUserSummary.id, target_login: updatedUserSummary.login },
+        auditContext, transactionClient
+      });
+      return updatedUserSummary;
     });
 
     return updatedUser;
@@ -353,21 +335,16 @@ function createUserService({
     }
 
     try {
-      const deletedUser = await repository.deleteById(id);
+      const deletedUser = await repository.withTransaction(async (transactionRepository, transactionClient) => {
+        const deleted = await transactionRepository.deleteById(id);
 
-      if (!deletedUser) {
-        throw notFound('Usuario nao encontrado');
-      }
+        if (!deleted) throw notFound('Usuario nao encontrado');
 
-      await audit.logAction({
-        user: actor,
-        action: 'user.deleted',
-        entityType: 'user',
-        entityId: deletedUser.id,
-        metadata: {
-          deleted_user: deletedUser
-        },
-        auditContext
+        await audit.logAction({
+          user: actor, action: 'user.deleted', entityType: 'user', entityId: deleted.id,
+          metadata: { deleted_user: deleted }, auditContext, transactionClient
+        });
+        return deleted;
       });
 
       return { message: 'Usuario excluido com sucesso' };

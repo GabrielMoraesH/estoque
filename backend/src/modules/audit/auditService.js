@@ -53,9 +53,9 @@ function createAuditService({ repository = auditRepository, loggerDependency = l
       return repository.list(filters);
     },
 
-    async logAction({ user, action, entityType, entityId = null, metadata = {}, auditContext = {} }) {
+    async logAction({ user, action, entityType, entityId = null, metadata = {}, auditContext = {}, transactionClient = null }) {
       try {
-        await repository.create({
+        const record = {
           userId: user?.id || null,
           userRole: user?.role || null,
           action,
@@ -64,9 +64,17 @@ function createAuditService({ repository = auditRepository, loggerDependency = l
           metadata: sanitizeMetadata(metadata),
           ipAddress: auditContext.ipAddress || null,
           userAgent: auditContext.userAgent || null
-        });
+        };
+        if (transactionClient) {
+          await repository.create(record, transactionClient);
+        } else {
+          await repository.create(record);
+        }
       } catch (err) {
         loggerDependency.error('Erro ao registrar auditoria');
+        if (transactionClient) {
+          throw err;
+        }
       }
     }
   };

@@ -30,7 +30,7 @@ function createUserRepository(db = pool) {
 
       try {
         await client.query('BEGIN');
-        const result = await callback(createUserRepository(client));
+        const result = await callback(createUserRepository(client), client);
         await client.query('COMMIT');
         return result;
       } catch (err) {

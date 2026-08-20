@@ -541,7 +541,7 @@ function createOcService({ repository, audit = noopAudit, csvSerializer = serial
 
     const groupedProducts = groupItemsByProduct(items);
 
-    const oc = await repository.withTransaction(async (tx) => {
+    const oc = await repository.withTransaction(async (tx, transactionClient) => {
       await assertUserHasEmpresaAccess(user.id, empresaId, tx);
       await assertEstoquistaAvailableForFirstCount(estoquista_id, tx);
       await assertUserHasEmpresaAccess(estoquista_id, empresaId, tx);
@@ -601,22 +601,22 @@ function createOcService({ repository, audit = noopAudit, csvSerializer = serial
         throw mapCreateModelError(err);
       }
 
+      await audit.logAction({
+        user,
+        action: 'oc.created',
+        entityType: 'oc',
+        entityId: createdOc.id,
+        metadata: {
+          codigo: createdOc.codigo,
+          empresa_id: empresaId,
+          gestor_id: createdOc.gestor_id,
+          estoquista_id: createdOc.estoquista_id,
+          item_count: groupedProducts.length
+        },
+        auditContext,
+        transactionClient
+      });
       return createdOc;
-    });
-
-    await audit.logAction({
-      user,
-      action: 'oc.created',
-      entityType: 'oc',
-      entityId: oc.id,
-      metadata: {
-        codigo: oc.codigo,
-        empresa_id: empresaId,
-        gestor_id: oc.gestor_id,
-        estoquista_id: oc.estoquista_id,
-        item_count: groupedProducts.length
-      },
-      auditContext
     });
 
     return { ...oc, qtd: groupedProducts.length };
@@ -857,7 +857,7 @@ function createOcService({ repository, audit = noopAudit, csvSerializer = serial
 
   async function approveOc({ user, empresaId, ocId, auditContext }) {
     assertAdministrativeApprovalRole(user);
-    const oc = await repository.withTransaction(async (tx) => {
+    await repository.withTransaction(async (tx, transactionClient) => {
       const foundOc = await getOcOrFail(ocId, tx, { forUpdate: true });
       assertOcEmpresa(foundOc, empresaId);
       ensureOcWaitingApproval(foundOc);
@@ -870,20 +870,15 @@ function createOcService({ repository, audit = noopAudit, csvSerializer = serial
       });
       await tx.updateOcStatus({ ocId, status: OC_STATUS.FINALIZED });
 
-      return foundOc;
-    });
-
-    await audit.logAction({
-      user,
-      action: 'oc.approved',
-      entityType: 'oc',
-      entityId: ocId,
-      metadata: {
-        previous_status: oc.status,
-        empresa_id: empresaId,
-        new_status: OC_STATUS.FINALIZED
-      },
-      auditContext
+      await audit.logAction({
+        user,
+        action: 'oc.approved',
+        entityType: 'oc',
+        entityId: ocId,
+        metadata: { previous_status: foundOc.status, empresa_id: empresaId, new_status: OC_STATUS.FINALIZED },
+        auditContext,
+        transactionClient
+      });
     });
 
     return { message: 'OC aprovada com sucesso' };
@@ -902,7 +897,7 @@ function createOcService({ repository, audit = noopAudit, csvSerializer = serial
     const normalizedItemIds = [...new Set(itemIds.map((itemId) => Number(itemId)))];
     const normalizedNovoEstoquistaId = Number(novoEstoquistaId);
     let recountContext = {};
-    const oc = await repository.withTransaction(async (tx) => {
+    await repository.withTransaction(async (tx, transactionClient) => {
       const foundOc = await getOcOrFail(ocId, tx, { forUpdate: true });
       assertOcEmpresa(foundOc, empresaId);
       ensureOcWaitingApproval(foundOc);
@@ -968,6 +963,16 @@ function createOcService({ repository, audit = noopAudit, csvSerializer = serial
 
         recountContext = { cycle: nextCycle, assignment_id: assignment.id };
 
+        await audit.logAction({
+          user, action: 'oc.sent_to_recount', entityType: 'oc', entityId: ocId,
+          metadata: {
+            previous_status: foundOc.status, empresa_id: empresaId, new_status: OC_STATUS.OPEN,
+            previous_estoquista_id: foundOc.estoquista_id,
+            new_estoquista_id: normalizedNovoEstoquistaId, item_ids: normalizedItemIds,
+            item_count: normalizedItemIds.length, ...recountContext
+          },
+          auditContext, transactionClient
+        });
         return foundOc;
       }
 
@@ -1009,25 +1014,17 @@ function createOcService({ repository, audit = noopAudit, csvSerializer = serial
         estoquistaId: normalizedNovoEstoquistaId
       });
 
+      await audit.logAction({
+        user, action: 'oc.sent_to_recount', entityType: 'oc', entityId: ocId,
+        metadata: {
+          previous_status: foundOc.status, empresa_id: empresaId, new_status: OC_STATUS.OPEN,
+          previous_estoquista_id: foundOc.estoquista_id,
+          new_estoquista_id: normalizedNovoEstoquistaId, item_ids: normalizedItemIds,
+          item_count: normalizedItemIds.length
+        },
+        auditContext, transactionClient
+      });
       return foundOc;
-    });
-
-    await audit.logAction({
-      user,
-      action: 'oc.sent_to_recount',
-      entityType: 'oc',
-      entityId: ocId,
-      metadata: {
-        previous_status: oc.status,
-        empresa_id: empresaId,
-        new_status: OC_STATUS.OPEN,
-        previous_estoquista_id: oc.estoquista_id,
-        new_estoquista_id: normalizedNovoEstoquistaId,
-        item_ids: normalizedItemIds,
-        item_count: normalizedItemIds.length,
-        ...recountContext
-      },
-      auditContext
     });
 
     return { message: 'Itens enviados para recontagem' };
@@ -1039,7 +1036,7 @@ function createOcService({ repository, audit = noopAudit, csvSerializer = serial
     const normalizedAssignmentId = Number(assignmentId);
     const normalizedNovoEstoquistaId = Number(novoEstoquistaId);
 
-    const result = await repository.withTransaction(async (tx) => {
+    const result = await repository.withTransaction(async (tx, transactionClient) => {
       const oc = await getOcOrFail(normalizedOcId, tx, { forUpdate: true });
       assertOcEmpresa(oc, empresaId);
 
@@ -1091,32 +1088,24 @@ function createOcService({ repository, audit = noopAudit, csvSerializer = serial
         throw conflict('Assignment foi alterado por outra operacao');
       }
 
-      return { assignment: updated, previousEstoquistaId: assignment.estoquista_id, progress, changed: true };
+      const result = { assignment: updated, previousEstoquistaId: assignment.estoquista_id, progress, changed: true };
+      await audit.logAction({
+        user,
+        action: 'oc.assignment_reassigned',
+        entityType: 'oc',
+        entityId: normalizedOcId,
+        metadata: {
+          empresa_id: Number(empresaId), oc_id: normalizedOcId,
+          assignment_id: normalizedAssignmentId, ciclo: Number(updated.ciclo), fase: updated.fase,
+          estoquista_anterior_id: Number(assignment.estoquista_id),
+          estoquista_novo_id: normalizedNovoEstoquistaId,
+          progresso: `${progress.counted}/${progress.total}`
+        },
+        auditContext,
+        transactionClient
+      });
+      return result;
     });
-
-    if (result.changed) {
-      try {
-        await audit.logAction({
-          user,
-          action: 'oc.assignment_reassigned',
-          entityType: 'oc',
-          entityId: normalizedOcId,
-          metadata: {
-            empresa_id: Number(empresaId),
-            oc_id: normalizedOcId,
-            assignment_id: normalizedAssignmentId,
-            ciclo: Number(result.assignment.ciclo),
-            fase: result.assignment.fase,
-            estoquista_anterior_id: Number(result.previousEstoquistaId),
-            estoquista_novo_id: normalizedNovoEstoquistaId,
-            progresso: `${result.progress.counted}/${result.progress.total}`
-          },
-          auditContext
-        });
-      } catch (_) {
-        // Auditoria e best-effort e nunca desfaz a operacao de dominio concluida.
-      }
-    }
 
     return {
       message: result.changed ? 'Responsavel reatribuido com sucesso' : 'Responsavel ja estava atribuido',
@@ -1398,10 +1387,23 @@ function createOcService({ repository, audit = noopAudit, csvSerializer = serial
   }
 
   async function finalizeOc({ user, empresaId, ocId, auditContext }) {
-    const { oc, updatedOc, validation } = await repository.withTransaction(async (tx) => {
+    const { updatedOc } = await repository.withTransaction(async (tx, transactionClient) => {
       const foundOc = await getOcOrFail(ocId, tx, { forUpdate: true });
       assertOcEmpresa(foundOc, empresaId);
       ensureOcOpen(foundOc);
+      const auditedResult = async (currentUpdatedOc, currentValidation) => {
+        await audit.logAction({
+          user, action: 'oc.finalized', entityType: 'oc', entityId: ocId,
+          metadata: {
+            previous_status: foundOc.status, empresa_id: empresaId,
+            new_status: OC_STATUS.WAITING_APPROVAL,
+            active_item_count: Number(currentValidation.qtd_ativos || 0),
+            counted_item_count: Number(currentValidation.qtd_contados || 0)
+          },
+          auditContext, transactionClient
+        });
+        return { updatedOc: currentUpdatedOc };
+      };
 
       if (await tx.ocHasNewModel(ocId)) {
         const assignment = await tx.findActiveAssignmentForUser(
@@ -1438,11 +1440,7 @@ function createOcService({ repository, audit = noopAudit, csvSerializer = serial
           status: OC_STATUS.WAITING_APPROVAL
         });
 
-        return {
-          oc: foundOc,
-          updatedOc: currentUpdatedOc,
-          validation: currentValidation
-        };
+        return auditedResult(currentUpdatedOc, currentValidation);
       }
 
       assertEstoquistaOwnership(user, foundOc);
@@ -1470,26 +1468,7 @@ function createOcService({ repository, audit = noopAudit, csvSerializer = serial
         status: OC_STATUS.WAITING_APPROVAL
       });
 
-      return {
-        oc: foundOc,
-        updatedOc: currentUpdatedOc,
-        validation: currentValidation
-      };
-    });
-
-    await audit.logAction({
-      user,
-      action: 'oc.finalized',
-      entityType: 'oc',
-      entityId: ocId,
-      metadata: {
-        previous_status: oc.status,
-        empresa_id: empresaId,
-        new_status: OC_STATUS.WAITING_APPROVAL,
-        active_item_count: Number(validation.qtd_ativos || 0),
-        counted_item_count: Number(validation.qtd_contados || 0)
-      },
-      auditContext
+      return auditedResult(currentUpdatedOc, currentValidation);
     });
 
     return { message: 'OC enviada para aprovacao', oc: updatedOc };

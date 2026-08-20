@@ -28,7 +28,7 @@ describe('EmpresaService unitario com repository mockado', () => {
     });
   });
 
-  it('inativa empresa preservando vinculos e registrando auditoria best-effort', async () => {
+  it('propaga falha da auditoria obrigatoria ao inativar empresa', async () => {
     const repository = {
       findById: jest.fn().mockResolvedValue({ id: 4, codigo: 'EMP', ativo: true }),
       updateStatus: jest.fn().mockResolvedValue({ id: 4, codigo: 'EMP', nome: 'Empresa', ativo: false })
@@ -36,7 +36,7 @@ describe('EmpresaService unitario com repository mockado', () => {
     const audit = { logAction: jest.fn().mockRejectedValue(new Error('audit unavailable')) };
     const service = createEmpresaService({ repository, audit });
 
-    await expect(service.updateEmpresaStatus({ id: 4, ativo: false, actor: { id: 1 } })).resolves.toMatchObject({ ativo: false });
+    await expect(service.updateEmpresaStatus({ id: 4, ativo: false, actor: { id: 1 } })).rejects.toThrow('audit unavailable');
     expect(repository.updateStatus).toHaveBeenCalledWith({ id: 4, ativo: false });
   });
 
