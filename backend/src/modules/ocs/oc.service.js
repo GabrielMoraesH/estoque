@@ -11,6 +11,7 @@ const {
 const { filterExportRows, getOperationalExportStatus } = require('./ocExport');
 const { createOcExportService, EXPORT_LIMIT, toExportCsvRow } = require('./services/oc-export.service');
 const { createOcQueryService } = require('./services/oc-query.service');
+const { createOcApprovalService } = require('./services/oc-approval.service');
 
 const noopAudit = {
   async logAction() {}
@@ -294,47 +295,16 @@ function createOcService({ repository, audit = noopAudit, csvSerializer } = {}) 
     }
   }
 
-  async function ensureOcCompleteForApproval(ocId, repo = repository) {
-    if (await repo.ocHasNewModel(ocId)) {
-      const validation = await repo.getNewModelApprovalValidation({ ocId });
-
-      if (!validation.oc_existe) {
-        throw notFound('OC nao encontrada');
-      }
-
-      if (validation.has_active_assignment) {
-        throw badRequest('OC possui recontagem ativa');
-      }
-
-      if (Number(validation.qtd_ativos || 0) === 0) {
-        throw badRequest('Nenhum produto disponivel para aprovar esta OC');
-      }
-
-      if (Number(validation.qtd_contados || 0) !== Number(validation.qtd_ativos || 0)) {
-        throw badRequest('OC possui localizacoes pendentes de contagem');
-      }
-
-      return;
-    }
-
-    const validation = await repo.getFinalizeValidation({
-      ocId,
-      approvedStatus: ITEM_STATUS.APPROVED,
-      countedStatus: ITEM_STATUS.COUNTED
-    });
-
-    if (!validation.oc_existe) {
-      throw notFound('OC nao encontrada');
-    }
-
-    if (Number(validation.qtd_ativos || 0) === 0) {
-      throw badRequest('Nenhum item disponivel para aprovar esta OC');
-    }
-
-    if (Number(validation.qtd_contados || 0) !== Number(validation.qtd_ativos || 0)) {
-      throw badRequest('OC possui itens pendentes de contagem');
-    }
-  }
+  const { approveOc } = createOcApprovalService({
+    repository,
+    audit,
+    assertAdministrativeApprovalRole,
+    getOcOrFail,
+    assertOcEmpresa,
+    ensureOcWaitingApproval,
+    badRequest,
+    notFound
+  });
 
   function ensureItemAvailableForCount(item) {
     if (!assertItemStatus(item, [ITEM_STATUS.PENDING, ITEM_STATUS.COUNTED, ITEM_STATUS.RECOUNT])) {
@@ -603,35 +573,6 @@ function createOcService({ repository, audit = noopAudit, csvSerializer } = {}) 
     });
 
     return { ...oc, qtd: groupedProducts.length };
-  }
-
-  async function approveOc({ user, empresaId, ocId, auditContext }) {
-    assertAdministrativeApprovalRole(user);
-    await repository.withTransaction(async (tx, transactionClient) => {
-      const foundOc = await getOcOrFail(ocId, tx, { forUpdate: true });
-      assertOcEmpresa(foundOc, empresaId);
-      ensureOcWaitingApproval(foundOc);
-      await ensureOcCompleteForApproval(ocId, tx);
-
-      await tx.approveItems({
-        ocId,
-        approvedStatus: ITEM_STATUS.APPROVED,
-        countedStatus: ITEM_STATUS.COUNTED
-      });
-      await tx.updateOcStatus({ ocId, status: OC_STATUS.FINALIZED });
-
-      await audit.logAction({
-        user,
-        action: 'oc.approved',
-        entityType: 'oc',
-        entityId: ocId,
-        metadata: { previous_status: foundOc.status, empresa_id: empresaId, new_status: OC_STATUS.FINALIZED },
-        auditContext,
-        transactionClient
-      });
-    });
-
-    return { message: 'OC aprovada com sucesso' };
   }
 
   async function sendOcToRecount({ user, empresaId, ocId, itemIds, novoEstoquistaId, auditContext }) {
