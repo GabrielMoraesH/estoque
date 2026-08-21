@@ -2119,6 +2119,51 @@ describe('OcService unitario com repository mockado', () => {
     expect(state.ocs[0].status).toBe(OC_STATUS.WAITING_APPROVAL);
   });
 
+  it('reverte OC e assignment quando a auditoria da finalizacao falha na transacao', async () => {
+    const { repository, service, oc } = await createNewModelOcForCount();
+    const [first, second] = repository.__getState().ocLocalizacoes;
+
+    await service.saveOcCount({
+      user: estoquista,
+      empresaId: 1,
+      payload: { oc_id: oc.id, oc_localizacao_id: first.id, quantidade: 1, lote: 'L1' }
+    });
+    await service.saveOcCount({
+      user: estoquista,
+      empresaId: 1,
+      payload: { oc_id: oc.id, oc_localizacao_id: second.id, quantidade: 2, lote: 'L2' }
+    });
+
+    const transactionClient = { id: 'finalize-transaction-client' };
+    const withTransaction = repository.withTransaction;
+    repository.withTransaction = jest.fn((callback) => (
+      withTransaction((tx) => callback(tx, transactionClient))
+    ));
+    const auditError = new Error('finalization audit failed');
+    const auditContext = { ip: '127.0.0.1', userAgent: 'qg-4k1' };
+    const audit = { logAction: jest.fn().mockRejectedValue(auditError) };
+    const finalizationService = createOcService({ repository, audit });
+
+    await expect(finalizationService.finalizeOc({
+      user: estoquista,
+      empresaId: 1,
+      ocId: oc.id,
+      auditContext
+    })).rejects.toBe(auditError);
+
+    const state = repository.__getState();
+    expect(state.ocs[0].status).toBe(OC_STATUS.OPEN);
+    expect(state.ocAssignments[0].status).toBe('ativo');
+    expect(state.ocAssignments[0].finalizado_em).toBeUndefined();
+    expect(audit.logAction).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'oc.finalized',
+      entityType: 'oc',
+      auditContext,
+      transactionClient
+    }));
+    expect(audit.logAction.mock.calls[0][0].transactionClient).toBe(transactionClient);
+  });
+
   it('bloqueia nova contagem e nova finalizacao depois que o assignment foi finalizado', async () => {
     const { repository, service, oc } = await createNewModelOcForCount();
     const [first, second] = repository.__getState().ocLocalizacoes;
