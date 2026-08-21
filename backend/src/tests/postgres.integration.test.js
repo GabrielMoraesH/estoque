@@ -557,4 +557,111 @@ describe('PostgreSQL integration', () => {
     })]);
     expect(persistedOc.status).toBe(OC_STATUS.open);
   });
+
+  it('rolls back recount mutations when the PostgreSQL audit insert fails', async () => {
+    const fixture = await createFixture();
+    const repository = createOcRepository(pool);
+    const audit = createAuditService({ loggerDependency: { error: jest.fn() } });
+    const failingAudit = {
+      logAction: jest.fn((params) => audit.logAction({ ...params, action: null }))
+    };
+    const service = createOcService({ repository, audit: failingAudit });
+    const created = await createNewModelOc(repository, fixture);
+    await countLocation(repository, created, 0, fixture.byLogin['anterior-test'], 10, 'C1-0');
+    await countLocation(repository, created, 1, fixture.byLogin['anterior-test'], 11, 'C1-1');
+    await repository.finalizeAssignment({ assignmentId: created.assignment.id });
+    await repository.updateOcStatus({ ocId: created.oc.id, status: OC_STATUS.waitingApproval });
+
+    const readState = async () => {
+      const [oc, assignments, links, audits] = await Promise.all([
+        pool.query('SELECT status FROM ocs WHERE id = $1', [created.oc.id]),
+        pool.query(
+          `SELECT id, ciclo, fase, status, estoquista_id, finalizado_em
+           FROM oc_assignments
+           WHERE oc_id = $1
+           ORDER BY ciclo, id`,
+          [created.oc.id]
+        ),
+        pool.query(
+          `SELECT assignment_id, oc_produto_id
+           FROM oc_assignment_produtos
+           WHERE oc_id = $1
+           ORDER BY assignment_id, oc_produto_id`,
+          [created.oc.id]
+        ),
+        pool.query(
+          `SELECT id, user_id, action, entity_type, entity_id, metadata
+           FROM audit_logs
+           WHERE entity_type = 'oc' AND entity_id = $1
+           ORDER BY id`,
+          [String(created.oc.id)]
+        )
+      ]);
+      return {
+        oc: oc.rows[0],
+        assignments: assignments.rows,
+        links: links.rows,
+        audits: audits.rows
+      };
+    };
+
+    const before = await readState();
+    expect(before).toMatchObject({
+      oc: { status: OC_STATUS.waitingApproval },
+      assignments: [{
+        id: created.assignment.id,
+        ciclo: 1,
+        fase: 'contagem',
+        status: 'finalizado',
+        estoquista_id: fixture.byLogin['anterior-test'],
+        finalizado_em: expect.any(Date)
+      }],
+      links: created.products.map((product) => ({
+        assignment_id: created.assignment.id,
+        oc_produto_id: product.id
+      })),
+      audits: []
+    });
+
+    let successResponse;
+    await expect(service.sendOcToRecount({
+      user: { id: fixture.byLogin['gestor-a-test'], role: 'gestor' },
+      empresaId: fixture.empresaA.id,
+      ocId: created.oc.id,
+      itemIds: [created.products[0].id],
+      novoEstoquistaId: fixture.byLogin['novo-a-test'],
+      auditContext: {}
+    }).then((response) => {
+      successResponse = response;
+      return response;
+    })).rejects.toMatchObject({ code: '23502' });
+
+    expect(successResponse).toBeUndefined();
+    expect(failingAudit.logAction).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'oc.sent_to_recount',
+      transactionClient: expect.objectContaining({ query: expect.any(Function) }),
+      metadata: expect.objectContaining({
+        cycle: 2,
+        new_estoquista_id: fixture.byLogin['novo-a-test'],
+        item_ids: [created.products[0].id]
+      })
+    }));
+
+    const after = await readState();
+    expect(after).toEqual(before);
+    expect(after.oc.status).toBe(OC_STATUS.waitingApproval);
+    expect(after.assignments).toEqual([before.assignments[0]]);
+    expect(after.assignments.some((assignment) => assignment.ciclo === 2)).toBe(false);
+    expect(after.assignments.some((assignment) => assignment.fase === 'recontagem')).toBe(false);
+    expect(after.assignments.some((assignment) => assignment.status === 'ativo')).toBe(false);
+    expect(after.assignments.some((assignment) => (
+      assignment.estoquista_id === fixture.byLogin['novo-a-test']
+    ))).toBe(false);
+    expect(after.links).toEqual(before.links);
+    expect(after.links.some((link) => (
+      link.assignment_id !== created.assignment.id
+      && created.products.some((product) => product.id === link.oc_produto_id)
+    ))).toBe(false);
+    expect(after.audits.some((log) => log.action === 'oc.sent_to_recount')).toBe(false);
+  });
 });
