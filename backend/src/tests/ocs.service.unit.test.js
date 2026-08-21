@@ -3325,6 +3325,12 @@ describe('OcService unitario com repository mockado', () => {
     const conflictRepository = createRepositoryMock({ ...base, reassignActiveAssignment: jest.fn().mockResolvedValue(null) });
     const conflictAudit = { logAction: jest.fn() };
     await expect(createOcService({ repository: conflictRepository, audit: conflictAudit }).reassignAssignment({ user: { id: 1, role: 'admin' }, empresaId: 1, ocId: 10, assignmentId: 500, novoEstoquistaId: 33 })).rejects.toMatchObject({ statusCode: 409 });
+    expect(conflictRepository.reassignActiveAssignment).toHaveBeenCalledWith(expect.objectContaining({
+      assignmentId: 500,
+      ocId: 10,
+      previousEstoquistaId: 22,
+      novoEstoquistaId: 33
+    }));
     expect(conflictAudit.logAction).not.toHaveBeenCalled();
 
     const successRepository = createRepositoryMock({ ...base, reassignActiveAssignment: jest.fn().mockResolvedValue({ id: 500, oc_id: 10, ciclo: 1, fase: 'contagem', status: 'ativo', estoquista_id: 33 }) });

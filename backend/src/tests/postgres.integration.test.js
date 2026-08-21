@@ -398,7 +398,7 @@ describe('PostgreSQL integration', () => {
       .resolves.toEqual([expect.objectContaining({ responsavel_atual_id: persisted.estoquista_id })]);
   });
 
-  it('characterizes concurrent reassignment through the service as serialized last-writer-wins', async () => {
+  it('allows exactly one concurrent reassignment through the service', async () => {
     const fixture = await createFixture();
     const repository = createOcRepository(pool);
     const audit = createAuditService({ loggerDependency: { error: jest.fn() } });
@@ -422,9 +422,15 @@ describe('PostgreSQL integration', () => {
 
     const fulfilled = results.filter((result) => result.status === 'fulfilled');
     const rejected = results.filter((result) => result.status === 'rejected');
-    expect(fulfilled).toHaveLength(2);
-    expect(rejected).toHaveLength(0);
-    expect(fulfilled.map((result) => result.value.changed)).toEqual([true, true]);
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(fulfilled[0].value.changed).toBe(true);
+    expect(rejected[0].reason).toMatchObject({
+      statusCode: 409,
+      message: 'Assignment foi alterado por outra operacao'
+    });
+
+    const winningEstoquistaId = fulfilled[0].value.assignment.estoquista_id;
 
     const persisted = await repository.findActiveAssignmentByOc({ ocId: created.oc.id });
     const logs = await pool.query(
@@ -433,29 +439,16 @@ describe('PostgreSQL integration', () => {
        ORDER BY id`,
       [String(created.oc.id)]
     );
-    expect(logs.rows).toHaveLength(2);
-    expect(logs.rows.map(({ metadata }) => metadata)).toEqual([
-      expect.objectContaining({
-        assignment_id: created.assignment.id,
-        ciclo: 1,
-        fase: 'contagem',
-        estoquista_anterior_id: initialEstoquistaId,
-        estoquista_novo_id: expect.any(Number)
-      }),
-      expect.objectContaining({
-        assignment_id: created.assignment.id,
-        ciclo: 1,
-        fase: 'contagem',
-        estoquista_anterior_id: expect.any(Number),
-        estoquista_novo_id: expect.any(Number)
-      })
-    ]);
-    expect(candidateIds).toContain(logs.rows[0].metadata.estoquista_novo_id);
-    expect(logs.rows[1].metadata.estoquista_anterior_id)
-      .toBe(logs.rows[0].metadata.estoquista_novo_id);
-    expect(candidateIds).toContain(logs.rows[1].metadata.estoquista_novo_id);
-    expect(logs.rows[1].metadata.estoquista_novo_id)
-      .not.toBe(logs.rows[0].metadata.estoquista_novo_id);
-    expect(persisted.estoquista_id).toBe(logs.rows[1].metadata.estoquista_novo_id);
+    expect(logs.rows).toHaveLength(1);
+    expect(logs.rows[0].metadata).toEqual(expect.objectContaining({
+      assignment_id: created.assignment.id,
+      ciclo: 1,
+      fase: 'contagem',
+      estoquista_anterior_id: initialEstoquistaId,
+      estoquista_novo_id: winningEstoquistaId,
+      progresso: `${fulfilled[0].value.progresso.counted}/${fulfilled[0].value.progresso.total}`
+    }));
+    expect(candidateIds).toContain(winningEstoquistaId);
+    expect(persisted.estoquista_id).toBe(winningEstoquistaId);
   });
 });

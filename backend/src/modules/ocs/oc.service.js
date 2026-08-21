@@ -362,6 +362,7 @@ function createOcService({ repository, audit = noopAudit, csvSerializer } = {}) 
     const normalizedOcId = Number(ocId);
     const normalizedAssignmentId = Number(assignmentId);
     const normalizedNovoEstoquistaId = Number(novoEstoquistaId);
+    const expectedAssignment = await repository.findActiveAssignmentByOc({ ocId: normalizedOcId });
 
     const result = await repository.withTransaction(async (tx, transactionClient) => {
       const oc = await getOcOrFail(normalizedOcId, tx, { forUpdate: true });
@@ -408,7 +409,7 @@ function createOcService({ repository, audit = noopAudit, csvSerializer } = {}) 
       const updated = await tx.reassignActiveAssignment({
         assignmentId: normalizedAssignmentId,
         ocId: normalizedOcId,
-        previousEstoquistaId: assignment.estoquista_id,
+        previousEstoquistaId: expectedAssignment?.estoquista_id,
         novoEstoquistaId: normalizedNovoEstoquistaId
       });
       if (!updated) {
