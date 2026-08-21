@@ -3332,6 +3332,47 @@ describe('OcService unitario com repository mockado', () => {
     await expect(createOcService({ repository: successRepository, audit: failingAudit }).reassignAssignment({ user: { id: 1, role: 'admin' }, empresaId: 1, ocId: 10, assignmentId: 500, novoEstoquistaId: 33 })).rejects.toThrow('audit unavailable');
     expect(failingAudit.logAction).toHaveBeenCalledTimes(1);
   });
+
+  it('restaura o assignment persistido quando a auditoria da reatribuicao falha', async () => {
+    const initialAssignment = {
+      id: 500,
+      oc_id: 10,
+      ciclo: 1,
+      fase: 'contagem',
+      estoquista_id: 22,
+      status: 'ativo',
+      criado_em: '2026-01-01T00:00:00.000Z'
+    };
+    const repository = createInMemoryOcRepository({
+      users: [
+        { id: 1, nome: 'Admin', role: 'admin', ativo: true, empresas: [{ id: 1 }] },
+        { id: 22, nome: 'Anterior', role: 'estoquista', ativo: true, nivel_estoquista: 1, empresas: [{ id: 1 }] },
+        { id: 33, nome: 'Novo', role: 'estoquista', ativo: true, nivel_estoquista: 1, empresas: [{ id: 1 }] }
+      ],
+      ocs: [{ id: 10, gestor_id: 1, estoquista_id: 22, empresa_id: 1, status: OC_STATUS.OPEN }],
+      ocProdutos: [{ id: 100, oc_id: 10, descricao_snapshot: 'Produto' }],
+      ocLocalizacoes: [{ id: 1001, oc_produto_id: 100, endereco_snapshot: 'A1', status: ITEM_STATUS.PENDING }],
+      ocAssignments: [initialAssignment],
+      ocAssignmentProdutos: [{ assignment_id: 500, oc_id: 10, oc_produto_id: 100 }]
+    });
+    const auditError = new Error('audit unavailable');
+    const audit = { logAction: jest.fn().mockRejectedValue(auditError) };
+    const service = createOcService({ repository, audit });
+
+    await expect(service.reassignAssignment({
+      user: { id: 1, role: 'admin' },
+      empresaId: 1,
+      ocId: 10,
+      assignmentId: 500,
+      novoEstoquistaId: 33
+    })).rejects.toBe(auditError);
+
+    expect(repository.__getState().ocAssignments).toEqual([initialAssignment]);
+    expect(repository.__getState().ocAssignments).not.toEqual([
+      expect.objectContaining({ estoquista_id: 33 })
+    ]);
+    expect(audit.logAction).toHaveBeenCalledTimes(1);
+  });
 });
 
 

@@ -1,5 +1,6 @@
 const pool = require('../config/db');
 const { createOcRepository } = require('../modules/ocs/oc.repository');
+const { createOcService } = require('../modules/ocs/oc.service');
 const { createEmpresaRepository } = require('../modules/empresas/empresaRepository');
 const { createAuditService } = require('../modules/audit/auditService');
 
@@ -33,15 +34,18 @@ async function createFixture() {
       ('Gestor B', 'gestor-b-test', 'hash', 'gestor', NULL),
       ('Anterior', 'anterior-test', 'hash', 'estoquista', 1),
       ('Novo A', 'novo-a-test', 'hash', 'estoquista', 2),
-      ('Novo B', 'novo-b-test', 'hash', 'estoquista', 1)
+      ('Novo B', 'novo-b-test', 'hash', 'estoquista', 1),
+      ('Concorrente B', 'concorrente-b-test', 'hash', 'estoquista', 1),
+      ('Concorrente C', 'concorrente-c-test', 'hash', 'estoquista', 1)
     RETURNING id, login
   `)).rows;
   const byLogin = Object.fromEntries(users.map((user) => [user.login, user.id]));
   await pool.query(
     `INSERT INTO user_empresas (user_id, empresa_id) VALUES
-      ($1, $2), ($3, $4), ($5, $2), ($6, $2), ($7, $4)`,
+      ($1, $2), ($3, $4), ($5, $2), ($6, $2), ($7, $4), ($8, $2), ($9, $2)`,
     [byLogin['gestor-a-test'], empresaA.id, byLogin['gestor-b-test'], empresaB.id,
-      byLogin['anterior-test'], byLogin['novo-a-test'], byLogin['novo-b-test']]
+      byLogin['anterior-test'], byLogin['novo-a-test'], byLogin['novo-b-test'],
+      byLogin['concorrente-b-test'], byLogin['concorrente-c-test']]
   );
   return { empresaA, empresaB, byLogin };
 }
@@ -392,5 +396,66 @@ describe('PostgreSQL integration', () => {
       .toContain(persisted.estoquista_id);
     await expect(repository.listByGestor({ empresaId: fixture.empresaA.id }))
       .resolves.toEqual([expect.objectContaining({ responsavel_atual_id: persisted.estoquista_id })]);
+  });
+
+  it('characterizes concurrent reassignment through the service as serialized last-writer-wins', async () => {
+    const fixture = await createFixture();
+    const repository = createOcRepository(pool);
+    const audit = createAuditService({ loggerDependency: { error: jest.fn() } });
+    const service = createOcService({ repository, audit });
+    const created = await createNewModelOc(repository, fixture);
+    const initialEstoquistaId = fixture.byLogin['anterior-test'];
+    const candidateIds = [
+      fixture.byLogin['concorrente-b-test'],
+      fixture.byLogin['concorrente-c-test']
+    ];
+    const input = {
+      user: { id: fixture.byLogin['gestor-a-test'], role: 'gestor' },
+      empresaId: fixture.empresaA.id,
+      ocId: created.oc.id,
+      assignmentId: created.assignment.id
+    };
+
+    const results = await Promise.allSettled(candidateIds.map((novoEstoquistaId) => (
+      service.reassignAssignment({ ...input, novoEstoquistaId })
+    )));
+
+    const fulfilled = results.filter((result) => result.status === 'fulfilled');
+    const rejected = results.filter((result) => result.status === 'rejected');
+    expect(fulfilled).toHaveLength(2);
+    expect(rejected).toHaveLength(0);
+    expect(fulfilled.map((result) => result.value.changed)).toEqual([true, true]);
+
+    const persisted = await repository.findActiveAssignmentByOc({ ocId: created.oc.id });
+    const logs = await pool.query(
+      `SELECT metadata FROM audit_logs
+       WHERE action = 'oc.assignment_reassigned' AND entity_type = 'oc' AND entity_id = $1
+       ORDER BY id`,
+      [String(created.oc.id)]
+    );
+    expect(logs.rows).toHaveLength(2);
+    expect(logs.rows.map(({ metadata }) => metadata)).toEqual([
+      expect.objectContaining({
+        assignment_id: created.assignment.id,
+        ciclo: 1,
+        fase: 'contagem',
+        estoquista_anterior_id: initialEstoquistaId,
+        estoquista_novo_id: expect.any(Number)
+      }),
+      expect.objectContaining({
+        assignment_id: created.assignment.id,
+        ciclo: 1,
+        fase: 'contagem',
+        estoquista_anterior_id: expect.any(Number),
+        estoquista_novo_id: expect.any(Number)
+      })
+    ]);
+    expect(candidateIds).toContain(logs.rows[0].metadata.estoquista_novo_id);
+    expect(logs.rows[1].metadata.estoquista_anterior_id)
+      .toBe(logs.rows[0].metadata.estoquista_novo_id);
+    expect(candidateIds).toContain(logs.rows[1].metadata.estoquista_novo_id);
+    expect(logs.rows[1].metadata.estoquista_novo_id)
+      .not.toBe(logs.rows[0].metadata.estoquista_novo_id);
+    expect(persisted.estoquista_id).toBe(logs.rows[1].metadata.estoquista_novo_id);
   });
 });
