@@ -398,6 +398,160 @@ describe('PostgreSQL integration', () => {
       .resolves.toEqual([expect.objectContaining({ responsavel_atual_id: persisted.estoquista_id })]);
   });
 
+  it('rejects cross-tenant recount inputs without changing either tenant', async () => {
+    const fixture = await createFixture();
+    const repository = createOcRepository(pool);
+    const audit = createAuditService({ loggerDependency: { error: jest.fn() } });
+    const service = createOcService({ repository, audit });
+    const own = await createNewModelOc(repository, fixture);
+    const foreign = await createNewModelOc(repository, fixture, {
+      empresa: fixture.empresaB,
+      gestorId: fixture.byLogin['gestor-b-test'],
+      estoquistaId: fixture.byLogin['novo-b-test']
+    });
+
+    for (const [created, userId] of [
+      [own, fixture.byLogin['anterior-test']],
+      [foreign, fixture.byLogin['novo-b-test']]
+    ]) {
+      await countLocation(repository, created, 0, userId, 10, `C1-${created.oc.id}-0`);
+      await countLocation(repository, created, 1, userId, 11, `C1-${created.oc.id}-1`);
+      await repository.finalizeAssignment({ assignmentId: created.assignment.id });
+      await repository.updateOcStatus({ ocId: created.oc.id, status: OC_STATUS.waitingApproval });
+    }
+    await pool.query('UPDATE users SET nivel_estoquista = 2 WHERE id = $1', [fixture.byLogin['novo-b-test']]);
+
+    const ocIds = [own.oc.id, foreign.oc.id];
+    const readState = async () => {
+      const [ocs, assignments, links, audits] = await Promise.all([
+        pool.query(
+          'SELECT id, empresa_id, status FROM ocs WHERE id = ANY($1::int[]) ORDER BY id',
+          [ocIds]
+        ),
+        pool.query(
+          `SELECT id, oc_id, ciclo, fase, estoquista_id, status, finalizado_em
+           FROM oc_assignments WHERE oc_id = ANY($1::int[]) ORDER BY oc_id, ciclo, id`,
+          [ocIds]
+        ),
+        pool.query(
+          `SELECT assignment_id, oc_id, oc_produto_id
+           FROM oc_assignment_produtos WHERE oc_id = ANY($1::int[])
+           ORDER BY oc_id, assignment_id, oc_produto_id`,
+          [ocIds]
+        ),
+        pool.query(
+          `SELECT id, user_id, action, entity_type, entity_id, metadata
+           FROM audit_logs
+           WHERE action = 'oc.sent_to_recount' AND entity_id = ANY($1::text[])
+           ORDER BY id`,
+          [ocIds.map(String)]
+        )
+      ]);
+      return { ocs: ocs.rows, assignments: assignments.rows, links: links.rows, audits: audits.rows };
+    };
+
+    const before = await readState();
+    await expect(service.sendOcToRecount({
+      user: { id: fixture.byLogin['gestor-a-test'], role: 'gestor' },
+      empresaId: fixture.empresaA.id,
+      ocId: foreign.oc.id,
+      itemIds: [foreign.products[0].id],
+      novoEstoquistaId: fixture.byLogin['novo-b-test']
+    })).rejects.toMatchObject({ statusCode: 404, errorCode: 'NOT_FOUND', message: 'OC nao encontrada' });
+    await expect(readState()).resolves.toEqual(before);
+
+    await expect(service.sendOcToRecount({
+      user: { id: fixture.byLogin['gestor-a-test'], role: 'gestor' },
+      empresaId: fixture.empresaA.id,
+      ocId: own.oc.id,
+      itemIds: [own.products[0].id],
+      novoEstoquistaId: fixture.byLogin['novo-b-test']
+    })).rejects.toMatchObject({ statusCode: 403, errorCode: 'AUTHORIZATION_ERROR' });
+    await expect(readState()).resolves.toEqual(before);
+
+    await expect(service.sendOcToRecount({
+      user: { id: fixture.byLogin['gestor-a-test'], role: 'gestor' },
+      empresaId: fixture.empresaA.id,
+      ocId: own.oc.id,
+      itemIds: [foreign.products[0].id],
+      novoEstoquistaId: fixture.byLogin['novo-a-test']
+    })).rejects.toMatchObject({ statusCode: 404, errorCode: 'NOT_FOUND' });
+
+    const after = await readState();
+    expect(after).toEqual(before);
+    expect(after.ocs.every((oc) => oc.status === OC_STATUS.waitingApproval)).toBe(true);
+    expect(after.assignments.some((assignment) => assignment.ciclo === 2)).toBe(false);
+    expect(after.assignments.some((assignment) => assignment.status === 'ativo')).toBe(false);
+    expect(after.links).toEqual(before.links);
+    expect(after.audits).toEqual([]);
+  });
+
+  it('rejects cross-tenant reassignment inputs without changing either tenant', async () => {
+    const fixture = await createFixture();
+    const repository = createOcRepository(pool);
+    const audit = createAuditService({ loggerDependency: { error: jest.fn() } });
+    const service = createOcService({ repository, audit });
+    const own = await createNewModelOc(repository, fixture);
+    const foreign = await createNewModelOc(repository, fixture, {
+      empresa: fixture.empresaB,
+      gestorId: fixture.byLogin['gestor-b-test'],
+      estoquistaId: fixture.byLogin['novo-b-test']
+    });
+    const ocIds = [own.oc.id, foreign.oc.id];
+    const readState = async () => {
+      const [assignments, audits] = await Promise.all([
+        pool.query(
+          `SELECT id, oc_id, ciclo, fase, estoquista_id, status, created_at, finalizado_em
+           FROM oc_assignments WHERE oc_id = ANY($1::int[]) ORDER BY oc_id, ciclo, id`,
+          [ocIds]
+        ),
+        pool.query(
+          `SELECT id, user_id, action, entity_type, entity_id, metadata
+           FROM audit_logs
+           WHERE action = 'oc.assignment_reassigned' AND entity_id = ANY($1::text[])
+           ORDER BY id`,
+          [ocIds.map(String)]
+        )
+      ]);
+      return { assignments: assignments.rows, audits: audits.rows };
+    };
+
+    const before = await readState();
+    await expect(service.reassignAssignment({
+      user: { id: fixture.byLogin['gestor-a-test'], role: 'gestor' },
+      empresaId: fixture.empresaA.id,
+      ocId: foreign.oc.id,
+      assignmentId: foreign.assignment.id,
+      novoEstoquistaId: fixture.byLogin['novo-b-test']
+    })).rejects.toMatchObject({ statusCode: 404, errorCode: 'NOT_FOUND', message: 'OC nao encontrada' });
+    await expect(readState()).resolves.toEqual(before);
+
+    await expect(service.reassignAssignment({
+      user: { id: fixture.byLogin['gestor-a-test'], role: 'gestor' },
+      empresaId: fixture.empresaA.id,
+      ocId: own.oc.id,
+      assignmentId: own.assignment.id,
+      novoEstoquistaId: fixture.byLogin['novo-b-test']
+    })).rejects.toMatchObject({ statusCode: 403, errorCode: 'AUTHORIZATION_ERROR' });
+    await expect(readState()).resolves.toEqual(before);
+
+    await expect(service.reassignAssignment({
+      user: { id: fixture.byLogin['gestor-a-test'], role: 'gestor' },
+      empresaId: fixture.empresaA.id,
+      ocId: own.oc.id,
+      assignmentId: foreign.assignment.id,
+      novoEstoquistaId: fixture.byLogin['concorrente-b-test']
+    })).rejects.toMatchObject({ statusCode: 404, errorCode: 'NOT_FOUND' });
+
+    const after = await readState();
+    expect(after).toEqual(before);
+    expect(after.assignments).toEqual(before.assignments);
+    expect(after.assignments.every((assignment) => (
+      assignment.status === 'ativo' && assignment.ciclo === 1 && assignment.fase === 'contagem'
+    ))).toBe(true);
+    expect(after.audits).toEqual([]);
+  });
+
   it('allows exactly one concurrent reassignment through the service', async () => {
     const fixture = await createFixture();
     const repository = createOcRepository(pool);
