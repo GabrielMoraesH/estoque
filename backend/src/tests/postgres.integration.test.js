@@ -451,4 +451,110 @@ describe('PostgreSQL integration', () => {
     expect(candidateIds).toContain(winningEstoquistaId);
     expect(persisted.estoquista_id).toBe(winningEstoquistaId);
   });
+
+  it('characterizes concurrent recount requests through the service', async () => {
+    const fixture = await createFixture();
+    const repository = createOcRepository(pool);
+    const audit = createAuditService({ loggerDependency: { error: jest.fn() } });
+    const service = createOcService({ repository, audit });
+    const created = await createNewModelOc(repository, fixture);
+    const candidateIds = [
+      fixture.byLogin['concorrente-b-test'],
+      fixture.byLogin['concorrente-c-test']
+    ];
+    await pool.query(
+      'UPDATE users SET nivel_estoquista = 2 WHERE id = ANY($1::int[])',
+      [candidateIds]
+    );
+    await countLocation(repository, created, 0, fixture.byLogin['anterior-test'], 10, 'C1-0');
+    await countLocation(repository, created, 1, fixture.byLogin['anterior-test'], 11, 'C1-1');
+    await repository.finalizeAssignment({ assignmentId: created.assignment.id });
+    await repository.updateOcStatus({ ocId: created.oc.id, status: OC_STATUS.waitingApproval });
+
+    const subset = [created.products[0].id];
+    const input = {
+      user: { id: fixture.byLogin['gestor-a-test'], role: 'gestor' },
+      empresaId: fixture.empresaA.id,
+      ocId: created.oc.id,
+      itemIds: subset
+    };
+    const settled = await Promise.allSettled(candidateIds.map((novoEstoquistaId) => (
+      service.sendOcToRecount({ ...input, novoEstoquistaId })
+    )));
+    const outcomes = settled.map((result, index) => ({
+      status: result.status,
+      requestedEstoquistaId: candidateIds[index],
+      value: result.status === 'fulfilled' ? result.value : undefined,
+      error: result.status === 'rejected' ? {
+        status: result.reason.statusCode,
+        code: result.reason.errorCode || result.reason.code,
+        message: result.reason.message
+      } : undefined
+    }));
+    const fulfilled = outcomes.filter((outcome) => outcome.status === 'fulfilled');
+    const rejected = outcomes.filter((outcome) => outcome.status === 'rejected');
+
+    expect(fulfilled).toEqual([expect.objectContaining({
+      requestedEstoquistaId: expect.any(Number),
+      value: { message: 'Itens enviados para recontagem' }
+    })]);
+    expect(rejected).toEqual([expect.objectContaining({
+      requestedEstoquistaId: expect.any(Number),
+      error: {
+        status: 400,
+        code: 'VALIDATION_ERROR',
+        message: 'OC nao esta aguardando aprovacao'
+      }
+    })]);
+
+    const winningEstoquistaId = fulfilled[0].requestedEstoquistaId;
+    const persistedOc = await repository.findOcById(created.oc.id);
+    const assignments = (await pool.query(
+      `SELECT id, ciclo, fase, estoquista_id, status
+       FROM oc_assignments
+       WHERE oc_id = $1
+       ORDER BY ciclo, id`,
+      [created.oc.id]
+    )).rows;
+    const recountAssignments = assignments.filter((assignment) => assignment.fase === 'recontagem');
+    const activeAssignments = assignments.filter((assignment) => assignment.status === 'ativo');
+    const links = (await pool.query(
+      `SELECT assignment_id, oc_produto_id
+       FROM oc_assignment_produtos
+       WHERE oc_id = $1 AND assignment_id = $2
+       ORDER BY oc_produto_id`,
+      [created.oc.id, recountAssignments[0]?.id]
+    )).rows;
+    const audits = (await pool.query(
+      `SELECT user_id, metadata
+       FROM audit_logs
+       WHERE action = 'oc.sent_to_recount' AND entity_type = 'oc' AND entity_id = $1
+       ORDER BY id`,
+      [String(created.oc.id)]
+    )).rows;
+
+    expect(assignments).toHaveLength(2);
+    expect(recountAssignments).toEqual([expect.objectContaining({
+      ciclo: 2,
+      fase: 'recontagem',
+      estoquista_id: winningEstoquistaId,
+      status: 'ativo'
+    })]);
+    expect(activeAssignments).toEqual(recountAssignments);
+    expect(new Set(assignments.map((assignment) => assignment.ciclo)).size).toBe(assignments.length);
+    expect(links).toEqual([{
+      assignment_id: recountAssignments[0].id,
+      oc_produto_id: subset[0]
+    }]);
+    expect(audits).toEqual([expect.objectContaining({
+      user_id: fixture.byLogin['gestor-a-test'],
+      metadata: expect.objectContaining({
+        assignment_id: recountAssignments[0].id,
+        cycle: 2,
+        new_estoquista_id: winningEstoquistaId,
+        item_ids: subset
+      })
+    })]);
+    expect(persistedOc.status).toBe(OC_STATUS.open);
+  });
 });
