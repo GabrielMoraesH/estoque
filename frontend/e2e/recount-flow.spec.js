@@ -70,6 +70,19 @@ test('executa recontagem parcial e finaliza a OC', async ({ page }) => {
   await logout(page);
 
   await loginAs(page, admin);
+  await page.getByLabel('Navegação principal').getByRole('button', { name: 'Gestão de OCs' }).click();
+  await page.getByLabel('Buscar').fill(ocCode);
+  const initialManagerCard = page.getByRole('article', { name: `OC ${ocCode}` });
+  await expect(initialManagerCard.getByText('Aguardando aprovação')).toBeVisible();
+  await initialManagerCard.getByRole('button', { name: 'Abrir detalhes' }).click();
+  await expect(page.getByRole('heading', { name: `OC ${ocCode}` })).toBeVisible();
+  const initialCycle = page.getByRole('article').filter({
+    has: page.getByRole('heading', { name: 'Ciclo 1 — Contagem' })
+  });
+  await expect(initialCycle).toContainText('Estoquista E2E Test Only');
+  await expect(initialCycle).toContainText('789123 — Dipirona 500mg');
+  await expect(initialCycle).toContainText('456789 — Amoxicilina 500mg');
+
   await page.getByLabel('Navegação principal').getByRole('button', { name: 'Aprovação' }).click();
   const approvalCard = page.getByRole('article', { name: `OC ${ocCode} aguardando aprovação` });
   await expect(approvalCard).toBeVisible();
@@ -102,6 +115,43 @@ test('executa recontagem parcial e finaliza a OC', async ({ page }) => {
   await logout(page);
 
   await loginAs(page, admin);
+  await page.getByLabel('Navegação principal').getByRole('button', { name: 'Gestão de OCs' }).click();
+  await page.getByLabel('Buscar').fill(ocCode);
+  const recountedManagerCard = page.getByRole('article', { name: `OC ${ocCode}` });
+  await expect(recountedManagerCard.getByText('Aguardando aprovação')).toBeVisible();
+  await recountedManagerCard.getByRole('button', { name: 'Abrir detalhes' }).click();
+
+  const cycle1 = page.getByRole('article').filter({
+    has: page.getByRole('heading', { name: 'Ciclo 1 — Contagem' })
+  });
+  const cycle2 = page.getByRole('article').filter({
+    has: page.getByRole('heading', { name: 'Ciclo 2 — Recontagem' })
+  });
+  await expect(cycle1).toContainText('Estoquista E2E Test Only');
+  await expect(cycle1).toContainText('789123 — Dipirona 500mg');
+  await expect(cycle1).toContainText('456789 — Amoxicilina 500mg');
+  await expect(cycle2).toContainText('Estoquista N2 E2E Test Only');
+  await expect(cycle2).toContainText('789123 — Dipirona 500mg');
+  await expect(cycle2).not.toContainText('Amoxicilina 500mg');
+
+  const dipyroneHistory = page.getByRole('article').filter({
+    has: page.getByRole('heading', { name: 'Dipirona 500mg' })
+  });
+  await expect(dipyroneHistory).toContainText('Ciclo 1 — Contagem');
+  await expect(dipyroneHistory).toContainText('Estoquista E2E Test Only · Quantidade 61 · Lote E2E-R1-DIP-01');
+  await expect(dipyroneHistory).toContainText('Ciclo 2 — Recontagem');
+  await expect(dipyroneHistory).toContainText('Estoquista N2 E2E Test Only · Quantidade 60 · Lote E2E-R2-DIP-01');
+  await expect(dipyroneHistory).toContainText('Saldo contado vigente120');
+
+  const amoxicillinHistory = page.getByRole('article').filter({
+    has: page.getByRole('heading', { name: 'Amoxicilina 500mg' })
+  });
+  await expect(amoxicillinHistory).toContainText('Ciclo 1 — Contagem');
+  await expect(amoxicillinHistory).toContainText('Estoquista E2E Test Only · Quantidade 50 · Lote E2E-R1-AMO-01');
+  await expect(amoxicillinHistory).not.toContainText('Ciclo 2 — Recontagem');
+  await expect(amoxicillinHistory).not.toContainText('Estoquista N2 E2E Test Only');
+  await expect(amoxicillinHistory).toContainText('Saldo contado vigente85');
+
   await page.getByLabel('Navegação principal').getByRole('button', { name: 'Aprovação' }).click();
   const finalApprovalCard = page.getByRole('article', { name: `OC ${ocCode} aguardando aprovação` });
   await expect(finalApprovalCard).toBeVisible();
