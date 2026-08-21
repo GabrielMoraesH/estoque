@@ -2455,6 +2455,95 @@ describe('OcService unitario com repository mockado', () => {
     expect(stateAfter.ocAssignmentProdutos).toHaveLength(stateBefore.ocAssignmentProdutos.length);
   });
 
+  it('reverte toda a recontagem quando a auditoria falha na transacao', async () => {
+    const { repository, oc } = await createNewModelOcForRecount();
+    const stateBefore = repository.__getState();
+    const productB = stateBefore.ocProdutos.find((produto) => produto.descricao_snapshot === 'Produto B');
+    const firstAssignmentBefore = stateBefore.ocAssignments[0];
+    const transactionClient = { id: 'recount-transaction-client' };
+    const withTransaction = repository.withTransaction;
+    repository.withTransaction = jest.fn((callback) => (
+      withTransaction((tx) => callback(tx, transactionClient))
+    ));
+    const auditError = new Error('audit unavailable');
+    const auditContext = { ip: '127.0.0.1', userAgent: 'qg-4l1' };
+    const audit = { logAction: jest.fn().mockRejectedValue(auditError) };
+    const recountService = createOcService({ repository, audit });
+
+    await expect(recountService.sendOcToRecount({
+      user: admin,
+      empresaId: 1,
+      ocId: oc.id,
+      itemIds: [productB.id],
+      novoEstoquistaId: 33,
+      auditContext
+    })).rejects.toBe(auditError);
+
+    const auditPayload = audit.logAction.mock.calls[0][0];
+    expect(auditPayload).toEqual(expect.objectContaining({
+      action: 'oc.sent_to_recount',
+      entityType: 'oc',
+      entityId: oc.id,
+      auditContext,
+      metadata: expect.objectContaining({
+        previous_status: OC_STATUS.WAITING_APPROVAL,
+        empresa_id: 1,
+        new_status: OC_STATUS.OPEN,
+        previous_estoquista_id: 22,
+        new_estoquista_id: 33,
+        item_ids: [productB.id],
+        item_count: 1,
+        cycle: 2,
+        assignment_id: expect.any(Number)
+      })
+    }));
+    expect(auditPayload.transactionClient).toBe(transactionClient);
+
+    const stateAfter = repository.__getState();
+    expect(stateAfter.ocs.find((item) => Number(item.id) === Number(oc.id)).status)
+      .toBe(OC_STATUS.WAITING_APPROVAL);
+    expect(stateAfter.ocAssignments).toHaveLength(stateBefore.ocAssignments.length);
+    expect(stateAfter.ocAssignments).toEqual(stateBefore.ocAssignments);
+    expect(stateAfter.ocAssignments[0]).toEqual(firstAssignmentBefore);
+    expect(stateAfter.ocAssignments.some((assignment) => assignment.fase === 'recontagem')).toBe(false);
+    expect(stateAfter.ocAssignments.some((assignment) => assignment.status === 'ativo')).toBe(false);
+    expect(stateAfter.ocAssignmentProdutos).toEqual(stateBefore.ocAssignmentProdutos);
+  });
+
+  it('preserva o estado quando falha ao criar o assignment de recontagem', async () => {
+    const { repository, oc } = await createNewModelOcForRecount();
+    const stateBefore = repository.__getState();
+    const productB = stateBefore.ocProdutos.find((produto) => produto.descricao_snapshot === 'Produto B');
+    const firstAssignmentBefore = stateBefore.ocAssignments[0];
+    const assignmentError = new Error('assignment unavailable');
+    const withTransaction = repository.withTransaction;
+    repository.withTransaction = jest.fn((callback) => withTransaction((tx, transactionClient) => {
+      tx.createOcAssignment = jest.fn().mockRejectedValue(assignmentError);
+      return callback(tx, transactionClient);
+    }));
+    const audit = { logAction: jest.fn().mockResolvedValue(undefined) };
+    const recountService = createOcService({ repository, audit });
+
+    await expect(recountService.sendOcToRecount({
+      user: admin,
+      empresaId: 1,
+      ocId: oc.id,
+      itemIds: [productB.id],
+      novoEstoquistaId: 33
+    })).rejects.toBe(assignmentError);
+
+    const stateAfter = repository.__getState();
+    expect(stateAfter.ocs.find((item) => Number(item.id) === Number(oc.id)).status)
+      .toBe(OC_STATUS.WAITING_APPROVAL);
+    expect(stateAfter.ocAssignments).toHaveLength(stateBefore.ocAssignments.length);
+    expect(stateAfter.ocAssignments).toEqual(stateBefore.ocAssignments);
+    expect(stateAfter.ocAssignments[0]).toEqual(firstAssignmentBefore);
+    expect(stateAfter.ocAssignments.some((assignment) => assignment.fase === 'recontagem')).toBe(false);
+    expect(stateAfter.ocAssignments.some((assignment) => assignment.status === 'ativo')).toBe(false);
+    expect(stateAfter.ocAssignmentProdutos).toEqual(stateBefore.ocAssignmentProdutos);
+    expect(audit.logAction).not.toHaveBeenCalled();
+  });
+
   it('cria ciclo 3 ao solicitar nova recontagem depois do ciclo 2 finalizado', async () => {
     const { repository, service, oc } = await createNewModelOcForRecount();
     const productB = repository.__getState().ocProdutos.find((produto) => produto.descricao_snapshot === 'Produto B');
