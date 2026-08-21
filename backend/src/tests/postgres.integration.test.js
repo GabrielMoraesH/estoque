@@ -452,6 +452,105 @@ describe('PostgreSQL integration', () => {
     expect(persisted.estoquista_id).toBe(winningEstoquistaId);
   });
 
+  it('rolls back reassignment when the PostgreSQL audit insert fails', async () => {
+    const fixture = await createFixture();
+    const repository = createOcRepository(pool);
+    const audit = createAuditService({ loggerDependency: { error: jest.fn() } });
+    const failingAudit = {
+      logAction: jest.fn((params) => audit.logAction({ ...params, action: null }))
+    };
+    const service = createOcService({ repository, audit: failingAudit });
+    const created = await createNewModelOc(repository, fixture);
+    const previousEstoquistaId = fixture.byLogin['anterior-test'];
+    const novoEstoquistaId = fixture.byLogin['concorrente-b-test'];
+
+    const readState = async () => {
+      const [assignment, progress, audits] = await Promise.all([
+        pool.query(
+          `SELECT id, oc_id, ciclo, fase, estoquista_id, status, created_at, finalizado_em
+           FROM oc_assignments
+           WHERE id = $1`,
+          [created.assignment.id]
+        ),
+        pool.query(
+          `SELECT COUNT(l.id)::int AS total,
+             COUNT(c.id) FILTER (WHERE c.id IS NOT NULL)::int AS counted
+           FROM oc_assignment_produtos ap
+           JOIN oc_localizacoes l ON l.oc_produto_id = ap.oc_produto_id
+           LEFT JOIN contagens c
+             ON c.assignment_id = ap.assignment_id
+            AND c.oc_localizacao_id = l.id
+           WHERE ap.assignment_id = $1`,
+          [created.assignment.id]
+        ),
+        pool.query(
+          `SELECT id, user_id, action, entity_type, entity_id, metadata
+           FROM audit_logs
+           WHERE entity_type = 'oc' AND entity_id = $1
+           ORDER BY id`,
+          [String(created.oc.id)]
+        )
+      ]);
+      return {
+        assignment: assignment.rows[0],
+        progress: progress.rows[0],
+        audits: audits.rows
+      };
+    };
+
+    const before = await readState();
+    expect(before).toEqual({
+      assignment: {
+        id: created.assignment.id,
+        oc_id: created.oc.id,
+        ciclo: 1,
+        fase: 'contagem',
+        estoquista_id: previousEstoquistaId,
+        status: 'ativo',
+        created_at: expect.any(Date),
+        finalizado_em: null
+      },
+      progress: { total: 2, counted: 0 },
+      audits: []
+    });
+
+    let successResponse;
+    await expect(service.reassignAssignment({
+      user: { id: fixture.byLogin['gestor-a-test'], role: 'gestor' },
+      empresaId: fixture.empresaA.id,
+      ocId: created.oc.id,
+      assignmentId: created.assignment.id,
+      novoEstoquistaId,
+      auditContext: {}
+    }).then((response) => {
+      successResponse = response;
+      return response;
+    })).rejects.toMatchObject({ code: '23502' });
+
+    expect(successResponse).toBeUndefined();
+    expect(failingAudit.logAction).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'oc.assignment_reassigned',
+      transactionClient: expect.objectContaining({ query: expect.any(Function) }),
+      metadata: expect.objectContaining({
+        assignment_id: created.assignment.id,
+        ciclo: 1,
+        fase: 'contagem',
+        estoquista_anterior_id: previousEstoquistaId,
+        estoquista_novo_id: novoEstoquistaId,
+        progresso: '0/2'
+      })
+    }));
+
+    const after = await readState();
+    expect(after).toEqual(before);
+    expect(after.assignment.estoquista_id).toBe(previousEstoquistaId);
+    expect(after.assignment.estoquista_id).not.toBe(novoEstoquistaId);
+    expect(after.assignment.status).toBe('ativo');
+    expect(after.assignment.ciclo).toBe(1);
+    expect(after.assignment.fase).toBe('contagem');
+    expect(after.audits.some((log) => log.action === 'oc.assignment_reassigned')).toBe(false);
+  });
+
   it('characterizes concurrent recount requests through the service', async () => {
     const fixture = await createFixture();
     const repository = createOcRepository(pool);
