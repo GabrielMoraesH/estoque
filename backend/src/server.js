@@ -2,6 +2,7 @@ const env = require('./config/env');
 const app = require('./app');
 const pool = require('./config/db');
 const logger = require('./utils/logger');
+const { createLifecycle, registerLifecycleHandlers } = require('./lifecycle');
 
 async function startServer() {
   try {
@@ -12,27 +13,19 @@ async function startServer() {
       logger.info(`[startup] API rodando em http://localhost:${env.port} (${env.nodeEnv})`);
     });
 
-    const shutdown = (signal) => {
-      logger.info(`[shutdown] Sinal recebido: ${signal}. Encerrando servidor...`);
+    const lifecycle = createLifecycle({ server, pool, logger });
+    registerLifecycleHandlers({ server, pool, lifecycle });
 
-      server.close(async () => {
-        try {
-          await pool.end();
-          logger.info('[shutdown] Servidor e conexao com banco encerrados');
-          process.exit(0);
-        } catch (error) {
-          logger.error('[shutdown] Erro ao encerrar conexao com banco', error.message);
-          process.exit(1);
-        }
-      });
-    };
-
-    process.on('SIGINT', () => shutdown('SIGINT'));
-    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    return server;
   } catch (error) {
     logger.error('[startup] Falha ao iniciar o backend', error.message);
-    process.exit(1);
+    process.exitCode = 1;
+    return null;
   }
 }
 
-startServer();
+if (require.main === module) {
+  startServer();
+}
+
+module.exports = { startServer };
