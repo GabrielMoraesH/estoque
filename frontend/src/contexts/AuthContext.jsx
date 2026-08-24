@@ -105,7 +105,9 @@ export function AuthProvider({ children }) {
   const [session, setSession] = useState(() => readStoredSession());
   const [isInitializing, setIsInitializing] = useState(true);
   const currentTokenRef = useRef(session.token);
+  const activeEmpresaIdRef = useRef(session.activeEmpresa?.id || null);
   const sessionVersionRef = useRef(0);
+  activeEmpresaIdRef.current = session.activeEmpresa?.id || null;
 
   const clearSession = useCallback(() => {
     sessionVersionRef.current += 1;
@@ -201,7 +203,7 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     configureApiClient({
       getToken: () => currentTokenRef.current,
-      getActiveEmpresaId: () => session.activeEmpresa?.id || null,
+      getActiveEmpresaId: () => activeEmpresaIdRef.current,
       onUnauthorized: (_error, requestContext) => {
         if (requestContext?.token === currentTokenRef.current) {
           clearSession();
@@ -213,7 +215,7 @@ export function AuthProvider({ children }) {
         }
       }
     });
-  }, [clearSession, revalidateSession, session.activeEmpresa?.id, session.token]);
+  }, [clearSession, revalidateSession, session.token]);
 
   useEffect(() => {
     let active = true;

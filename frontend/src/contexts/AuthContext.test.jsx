@@ -1,4 +1,5 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
+import { useEffect } from "react";
 import { ApiError, configureApiClient, getCurrentUser, loginUser } from "../services/api";
 import { AuthProvider, useAuthContext } from "./AuthContext";
 
@@ -22,10 +23,17 @@ const user = {
 };
 
 let latestAuth;
+let configuredApiClient;
+let empresaIdsObservedByConsumer;
 
 function SessionProbe() {
   const auth = useAuthContext();
   latestAuth = auth;
+  useEffect(() => {
+    if (configuredApiClient) {
+      empresaIdsObservedByConsumer.push(configuredApiClient.getActiveEmpresaId());
+    }
+  }, [auth.activeEmpresa?.id]);
   return <>
     <output data-testid="state">{JSON.stringify({
       initializing: auth.isInitializing,
@@ -57,6 +65,11 @@ describe("AuthContext", () => {
     localStorage.clear();
     jest.clearAllMocks();
     latestAuth = null;
+    configuredApiClient = null;
+    empresaIdsObservedByConsumer = [];
+    configureApiClient.mockImplementation((config) => {
+      configuredApiClient = config;
+    });
   });
 
   afterEach(() => {
@@ -141,5 +154,18 @@ describe("AuthContext", () => {
     await act(async () => screen.getByRole("button", { name: "logout" }).click());
     expect(state()).toEqual({ initializing: false, authenticated: false, user: null, empresa: null });
     expect(localStorage.getItem("token")).toBeNull();
+  });
+
+  it("expoe a nova empresa ao cliente API antes dos effects consumidores", async () => {
+    storedSession();
+    getCurrentUser.mockResolvedValue({ user });
+    renderProvider();
+    await waitFor(() => expect(state().empresa).toBe(2));
+    empresaIdsObservedByConsumer = [];
+
+    await act(async () => screen.getByRole("button", { name: "empresa-rj" }).click());
+
+    expect(empresaIdsObservedByConsumer).toEqual([4]);
+    expect(configuredApiClient.getActiveEmpresaId()).toBe(4);
   });
 });
