@@ -1,8 +1,14 @@
 node_modules
-npm-debug.log
-.env
+*.log
+.env*
+!.env.example
 .git
 .gitignore
+Dockerfile
 build
 coverage
-Dockerfile
+e2e
+playwright-report
+test-results
+**/*.test.js
+**/*.test.jsx
