@@ -1,4 +1,5 @@
 const express = require('express');
+const rateLimit = require('express-rate-limit');
 const request = require('supertest');
 const logger = require('../utils/logger');
 const requestId = require('../middlewares/requestId');
@@ -12,12 +13,21 @@ jest.mock('../utils/logger', () => ({
   error: jest.fn()
 }));
 
-function createApp(routeMiddleware) {
+function createApp(routeMiddleware, { trustProxy = false, middleware } = {}) {
   const app = express();
+  app.set('trust proxy', trustProxy);
   app.use(requestId);
   app.use(requestLogger);
+  if (middleware) {
+    app.use(middleware);
+  }
   app.get('/test', routeMiddleware || ((req, res) => {
-    res.json({ requestId: req.requestId, auditContext: getRequestContext(req) });
+    res.json({
+      requestId: req.requestId,
+      ip: req.ip,
+      ips: req.ips,
+      auditContext: getRequestContext(req)
+    });
   }));
   app.use(errorHandler);
   return app;
@@ -70,5 +80,69 @@ describe('Contexto HTTP correlacionavel', () => {
     );
     expect(logger.error.mock.calls[0].join(' ')).not.toContain('Nao deve aparecer');
     expect(logger.error.mock.calls[0].join(' ')).not.toContain('token=nao-logar');
+  });
+
+  it('ignora X-Forwarded-For arbitrario em request direta sem proxy confiavel', async () => {
+    const response = await request(createApp())
+      .get('/test')
+      .set('X-Forwarded-For', '203.0.113.10');
+
+    expect(response.body.ip).not.toBe('203.0.113.10');
+    expect(response.body.ips).toEqual([]);
+    expect(response.body.auditContext.ipAddress).toBe(response.body.ip);
+  });
+
+  it('resolve o cliente e o audit context por um unico proxy confiavel', async () => {
+    const response = await request(createApp(undefined, { trustProxy: 1 }))
+      .get('/test')
+      .set('X-Forwarded-For', '203.0.113.20');
+
+    expect(response.body.ip).toBe('203.0.113.20');
+    expect(response.body.ips).toEqual(['203.0.113.20']);
+    expect(response.body.auditContext.ipAddress).toBe(response.body.ip);
+  });
+
+  it('confia somente no endereco mais proximo em uma cadeia com um hop confiavel', async () => {
+    const response = await request(createApp(undefined, { trustProxy: 1 }))
+      .get('/test')
+      .set('X-Forwarded-For', '198.51.100.30, 203.0.113.30');
+
+    expect(response.body.ip).toBe('203.0.113.30');
+    expect(response.body.ips).toEqual(['203.0.113.30']);
+    expect(response.body.auditContext.ipAddress).toBe(response.body.ip);
+  });
+
+  it('rate limit separa clientes e mantem o mesmo cliente na mesma chave', async () => {
+    const limiter = rateLimit({
+      windowMs: 60_000,
+      limit: 1,
+      standardHeaders: true,
+      legacyHeaders: false
+    });
+    const app = createApp(undefined, { trustProxy: 1, middleware: limiter });
+
+    const firstA = await request(app).get('/test').set('X-Forwarded-For', '203.0.113.40');
+    const secondA = await request(app).get('/test').set('X-Forwarded-For', '203.0.113.40');
+    const firstB = await request(app).get('/test').set('X-Forwarded-For', '203.0.113.41');
+
+    expect(firstA.status).toBe(200);
+    expect(secondA.status).toBe(429);
+    expect(firstB.status).toBe(200);
+  });
+
+  it('configura exatamente um hop confiavel no app de production', () => {
+    const previousNodeEnv = process.env.NODE_ENV;
+    let productionApp;
+
+    try {
+      process.env.NODE_ENV = 'production';
+      jest.isolateModules(() => {
+        productionApp = require('../app');
+      });
+    } finally {
+      process.env.NODE_ENV = previousNodeEnv;
+    }
+
+    expect(productionApp.get('trust proxy')).toBe(1);
   });
 });

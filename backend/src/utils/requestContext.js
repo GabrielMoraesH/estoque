@@ -1,10 +1,4 @@
 function getIpAddress(req) {
-  const forwardedFor = req.headers?.['x-forwarded-for'];
-
-  if (forwardedFor) {
-    return String(forwardedFor).split(',')[0].trim();
-  }
-
   return req.ip || req.socket?.remoteAddress || null;
 }
 

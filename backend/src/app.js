@@ -18,6 +18,7 @@ const { requestBodyLimit, helmetOptions, swaggerHelmetOptions, corsOrigins, node
 const app = express();
 const swaggerUiHandler = swaggerUi.setup(swaggerSpec);
 
+app.set('trust proxy', nodeEnv === 'production' ? 1 : false);
 app.disable('x-powered-by');
 app.use(requestId);
 app.use(requestLogger);

@@ -14,10 +14,13 @@ COPY public ./public
 COPY src ./src
 RUN npm run build
 
-# Static artifact only. QG-7H will add the Caddy runtime and edge configuration.
-FROM scratch AS production
+# Production edge: serve the compiled React application with Caddy.
+FROM caddy:2-alpine AS production
 
-COPY --from=build /app/build /build
+COPY --from=build /app/build /srv
+COPY Caddyfile /etc/caddy/Caddyfile
+
+EXPOSE 80
 
 FROM dependencies AS development
 
