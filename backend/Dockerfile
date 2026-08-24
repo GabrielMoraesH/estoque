@@ -16,6 +16,7 @@ RUN npm ci --omit=dev && npm cache clean --force
 COPY --chown=node:node src ./src
 COPY --chown=node:node migrations ./migrations
 COPY --chown=node:node scripts/migrate.js ./scripts/migrate.js
+COPY --chown=node:node scripts/bootstrap-production.js ./scripts/bootstrap-production.js
 
 USER node
 EXPOSE 5000
