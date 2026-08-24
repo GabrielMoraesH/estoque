@@ -67,8 +67,10 @@ function errorHandler(err, req, res, next) {
   const shouldLog = statusCode >= 500 || !normalizedError.isOperational;
 
   if (shouldLog) {
+    const userContext = req.user?.id === undefined ? '' : ` [user_id=${req.user.id}]`;
+    const empresaContext = req.empresaId === undefined ? '' : ` [empresa_id=${req.empresaId}]`;
     logger.error(
-      `[error] ${req.method} ${req.originalUrl.split('?')[0]} ${statusCode}`,
+      `[error] [request_id=${req.requestId}]${userContext}${empresaContext} ${req.method} ${req.originalUrl.split('?')[0]} ${statusCode}`,
       err.stack || err.message
     );
   }

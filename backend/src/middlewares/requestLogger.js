@@ -9,7 +9,7 @@ function requestLogger(req, res, next) {
     const path = req.originalUrl.split('?')[0];
 
     logger.info(
-      `[request] ${req.method} ${path} ${res.statusCode} ${Math.round(durationMs)}ms`
+      `[request] [request_id=${req.requestId}] ${req.method} ${path} ${res.statusCode} ${Math.round(durationMs)}ms`
     );
   });
 

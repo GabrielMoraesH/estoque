@@ -19,7 +19,8 @@ function getUserAgent(req) {
 function getRequestContext(req) {
   return {
     ipAddress: getIpAddress(req),
-    userAgent: getUserAgent(req)
+    userAgent: getUserAgent(req),
+    requestId: req.requestId || null
   };
 }
 

@@ -17,9 +17,13 @@ describe('Auditoria', () => {
   it('mantem a operacao principal best-effort quando a auditoria falha', async () => {
     const logger = { error: jest.fn() };
     const service = createAuditService({ repository: { create: jest.fn().mockRejectedValue(new Error('db')) }, loggerDependency: logger });
-    await expect(service.logAction({ action: 'oc.created', entityType: 'oc' })).resolves.toBeUndefined();
+    await expect(service.logAction({
+      action: 'oc.created', entityType: 'oc', entityId: 10, auditContext: { requestId: 'request-123' }
+    })).resolves.toBeUndefined();
     expect(logger.error).toHaveBeenCalledTimes(1);
-    expect(logger.error).toHaveBeenCalledWith('Erro ao registrar auditoria');
+    expect(logger.error).toHaveBeenCalledWith(
+      '[audit_error] [request_id=request-123] [action=oc.created] [entity_type=oc] [entity_id=10]'
+    );
   });
 
   it('propaga falha quando a auditoria participa de uma transacao', async () => {

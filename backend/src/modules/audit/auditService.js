@@ -71,7 +71,9 @@ function createAuditService({ repository = auditRepository, loggerDependency = l
           await repository.create(record);
         }
       } catch (err) {
-        loggerDependency.error('Erro ao registrar auditoria');
+        loggerDependency.error(
+          `[audit_error] [request_id=${auditContext.requestId || 'unavailable'}] [action=${action}] [entity_type=${entityType}] [entity_id=${entityId ?? 'null'}]`
+        );
         if (transactionClient) {
           throw err;
         }

@@ -10,6 +10,7 @@ const healthRoutes = require('./modules/health/health.routes');
 const empresaRoutes = require('./modules/empresas/empresa.routes');
 const auditRoutes = require('./modules/audit/audit.routes');
 const errorHandler = require('./middlewares/errorHandler');
+const requestId = require('./middlewares/requestId');
 const requestLogger = require('./middlewares/requestLogger');
 const { apiLimiter, loginLimiter } = require('./middlewares/rateLimiter');
 const { requestBodyLimit, helmetOptions, swaggerHelmetOptions, corsOrigins, nodeEnv } = require('./config/security');
@@ -18,6 +19,8 @@ const app = express();
 const swaggerUiHandler = swaggerUi.setup(swaggerSpec);
 
 app.disable('x-powered-by');
+app.use(requestId);
+app.use(requestLogger);
 app.use('/docs', helmet(swaggerHelmetOptions));
 app.get('/docs', (req, res, next) => {
   if (req.path !== '/docs') {
@@ -47,7 +50,6 @@ app.use(cors({
 }));
 app.use(express.json({ limit: requestBodyLimit }));
 app.use(express.urlencoded({ extended: false, limit: requestBodyLimit }));
-app.use(requestLogger);
 
 app.use(healthRoutes);
 
