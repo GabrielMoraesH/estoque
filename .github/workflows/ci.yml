@@ -97,6 +97,67 @@ jobs:
       - name: Build production bundle
         run: npm run build
 
+  production-docker:
+    name: Production Docker
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+    needs:
+      - backend
+      - frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PRODUCTION_CI_ENV_FILE: .env.production.ci
+      EDGE_HTTP_PORT: "8080"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create disposable production environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s\n' \
+            'POSTGRES_DB=estoque_med_ci_test' \
+            'POSTGRES_USER=estoque_ci' \
+            'POSTGRES_PASSWORD=QG7K-ci-only-Postgres-2026!' \
+            'JWT_SECRET=QG7K-ci-only-JWT-secret-2026-with-entropy' \
+            'CORS_ORIGIN=http://127.0.0.1:8080' \
+            'EDGE_HTTP_PORT=8080' \
+            'BOOTSTRAP_ADMIN_LOGIN=qg7k.ci.admin' \
+            'BOOTSTRAP_ADMIN_PASSWORD=QG7K-ci-only-Admin-2026!' \
+            > "$PRODUCTION_CI_ENV_FILE"
+
+      - name: Validate production Docker stack
+        shell: bash
+        run: bash deploy/scripts/validate-production-docker.sh "$PRODUCTION_CI_ENV_FILE"
+
+      - name: Collect diagnostics on failure
+        if: failure()
+        shell: bash
+        run: |
+          set +e
+          docker compose --env-file "$PRODUCTION_CI_ENV_FILE" -f docker-compose.prod.yml ps --all
+          docker compose --env-file "$PRODUCTION_CI_ENV_FILE" -f docker-compose.prod.yml logs --no-color > docker-compose-production.log
+          cat docker-compose-production.log
+
+      - name: Upload production Docker logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-docker-logs
+          path: docker-compose-production.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Stop production Docker stack
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          docker compose --env-file "$PRODUCTION_CI_ENV_FILE" -f docker-compose.prod.yml down
+          rm -f -- "$PRODUCTION_CI_ENV_FILE"
+
   postgres-integration:
     name: PostgreSQL integration
     runs-on: ubuntu-latest
