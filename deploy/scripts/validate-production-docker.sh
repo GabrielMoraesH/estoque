@@ -65,7 +65,7 @@ echo "Building production images"
 
 echo "Validating the Caddyfile with the production edge image"
 "${compose[@]}" run --rm --no-deps edge \
-  validate --config /etc/caddy/Caddyfile --adapter caddyfile
+  caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 
 echo "Starting the production stack without the bootstrap profile"
 "${compose[@]}" up -d
